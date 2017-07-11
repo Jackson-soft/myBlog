@@ -1,0 +1,56 @@
+#+TITLE: C++11 智能指针
+
+** unique_ptr
+
+C++11 中提供了 std::unique_ptr，定义在头文件中。
+
+C++11 新增了 move 语义，相比 copy 语义，它能更好的实现值传递.std::auto_ptr 使用的是 copy 语义，为了向前兼容,C++11 没有修改 std::auto_ptr，而是引入了新的使用 move 语义的 std::unique_ptr.
+
+uniqu_ptr 的拷贝构造函数和赋值运算符都声明为 deleted，也就是说它不能被拷贝，只能通过 std::move 来转递它所指向的内存的所有权。
+
+#+BEGIN_SRC C++
+std::unique_ptr<int> p1(new int(5));
+std::unique_ptr<int> p2 = p1; // 编译会出错
+std::unique_ptr<int> p3 = std::move (p1); // 转移所有权，现在那块内存归 p3 所有, p1 成为无效的指针。
+
+p3.reset(); //释放内存。
+p1.reset(); //实际上什么都没做。
+#+END_SRC
+
+** shared_ptr 和 weak_ptr
+
+基于 Boost 库, C++11 加入了 shared_ptr 和 weak_ptr.它们最早在 TR1 中就被引入，但在 C++11 中，在 Boost 的基础上又加入了新的功能。
+
+std::shared_ptr 使用引用计数。每一个 shared_ptr 的拷贝都指向相同的内存。在最后一个 shared_ptr 析构的时候，内存才会被释放。
+
+#+BEGIN_SRC C++
+std::shared_ptr<int> p1(new int(5));
+std::shared_ptr<int> p2 = p1; // 都指向同一内存。
+
+p1.reset(); // 因为 p2 还在，所以内存没有释放。
+p2.reset(); // 释放内存，因为没有 shared_ptr 指向那块内存了。
+#+END_SRC
+
+std::shared_ptr 使用引用计数，所以有循环计数的问题。为了打破循环，可以使用 std::weak_ptr.顾名思义, weak_ptr 是一个弱引用，只引用，不计数。如果一块内存被 shared_ptr 和 weak_ptr 同时引用，
+当所有 shared_ptr 析构了之后，不管还有没有 weak_ptr 引用该内存，内存也会被释放。所以 weak_ptr 不保证它指向的内存一定是有效的，在使用之前需要检查。
+
+#+BEGIN_SRC C++
+std::shared_ptr<int> p1(new int(5));
+std::weak_ptr<int> wp1 = p1; // 还是只有 p1 有所有权。
+
+{
+  std::shared_ptr<int> p2 = wp1.lock(); // p1 和 p2 都有所有权
+  if (p2) // 使用前需要检查
+  {
+    // 使用 p2
+  }
+} // p2 析构了，现在只有 p1 有所有权。
+
+p1.reset(); // 内存被释放。
+
+std::shared_ptr<int> p3 = wp1.lock(); // 因为内存已经被释放了，所以得到的是空指针。
+if（p3）
+{
+  // 不会执行到这。
+}
+#+END_SRC
