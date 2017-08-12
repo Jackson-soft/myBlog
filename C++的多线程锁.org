@@ -1,0 +1,42 @@
+#+TITLE: Modern C++的多线程锁
+
+** 基本互斥锁
+
+   + =std::mutex= 基本的互斥锁类，不可复制。提供非递归所有权语义。只提供基本的锁操作方法 =lock= 、 =try_lock= 、 =unlock= 。
+
+   + =std::timed_mutex= 带有超时的锁，不可复制。提供 =lock= 、 =try_lock= 、 =try_lock_for= 、 =try_lock_until= 、 =unlock= 。
+
+   + =std::recursive_mutex= 可由同一线程递归加锁，不可复制。此锁通过引用计数来管理锁的所有权，意味着 =lock= 与 =unlock= 必须匹配，不然另外的线程无法获取锁资源。
+还有就是上锁的次数是有最大限制的，达到上限后，调用 =lock= 将抛出 =std::system_error= 和调用 =try_lock= 将返回 =false= 。
+
+   + =std::recursive_timed_mutex= 带有超时的递归锁。
+
+   + =std::shared_mutex= 共享互斥锁（读写锁）。此锁容许多个读线程访问共享数据而不产生数据竞争，但同一时刻只能有一个写线程来操作共享数据。
+
+   + =std::shared_timed_mutex= 带有超时的读写锁。
+
+** 锁的资源管理
+
+   + =std::lock_guard= 具有 RAII 风格的互斥锁封装，不可复制。在该类的作用域内提供加锁与自动解锁，防止锁资源泄漏。
+
+   + =std::unique_lock= 同样是具有 RAII 风格的互斥锁封装，不可复制，但可以转移（movable）。该类允许递延锁定，定时锁定，递归锁，锁的所有权转移，使用条件变量。
+在使用上 =std::unique_lock= 要比 =std::lock_guard= 更灵活，但是更灵活的代价是占用空间相对更大一点且相对更慢一点。
+
+   + =std :: scoped_lock= 多互斥的免死锁 RAII 封装。主要用于在作用域的持续时间内拥有一个或多个互斥体。
+
+   + =std :: shared_lock= 共享互斥锁的封装，不可复制，但可以转移。允许延迟锁定，定时锁定和锁定所有权的转让。
+
+** 条件变量
+
+   + =std::condition_variable= 提供关联到一个 =std::unique_lock= 的条件变量。
+
+   当 =std::condition_variable= 对象的某个 =wait= 函数被调用的时候，它使用 =std::unique_lock= (通过 =std::mutex=) 来锁住当前线程。
+当前线程会一直被阻塞，直到另外一个线程在相同的 =std::condition_variable= 对象上调用了 =notification= 函数来唤醒当前线程。 =std::condition_variable= 对象通常使用 
+=std::unique_lock<std::mutex>= 来等待，如果需要使用另外的 =lockable= 类型，可以使用 =std::condition_variable_any= 类。
+
+  + =std::condition_variable_any= 提供关联到任何锁类型的条件变量。
+
+  与 =std::condition_variable= 类似，只不过 =std::condition_variable_any= 的 =wait= 函数可以接受任何 =lockable= 参数，而 =std::condition_variable= 只能接受
+=std::unique_lock<std::mutex>= 类型的参数，除此以外，和 =std::condition_variable= 几乎完全一样。
+
+  + =std::notify_all_at_thread_exit= 当调用该函数的线程退出时，所有在 =cond= 条件变量上等待的线程都会收到通知。
