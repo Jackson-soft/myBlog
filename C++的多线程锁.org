@@ -6,8 +6,7 @@
 
    + =std::timed_mutex= 带有超时的锁，不可复制。提供 =lock= 、 =try_lock= 、 =try_lock_for= 、 =try_lock_until= 、 =unlock= 。
 
-   + =std::recursive_mutex= 可由同一线程递归加锁，不可复制。此锁通过引用计数来管理锁的所有权，意味着 =lock= 与 =unlock= 必须匹配，不然另外的线程无法获取锁资源。
-还有就是上锁的次数是有最大限制的，达到上限后，调用 =lock= 将抛出 =std::system_error= 和调用 =try_lock= 将返回 =false= 。
+   + =std::recursive_mutex= 可由同一线程递归加锁，不可复制。此锁通过引用计数来管理锁的所有权，意味着 =lock= 与 =unlock= 必须匹配，不然另外的线程无法获取锁资源。还有就是上锁的次数是有最大限制的，达到上限后，调用 =lock= 将抛出 =std::system_error= 和调用 =try_lock= 将返回 =false= 。
 
    + =std::recursive_timed_mutex= 带有超时的递归锁。
 
@@ -19,8 +18,7 @@
 
    + =std::lock_guard= 具有 RAII 风格的互斥锁封装，不可复制。在该类的作用域内提供加锁与自动解锁，防止锁资源泄漏。
 
-   + =std::unique_lock= 同样是具有 RAII 风格的互斥锁封装，不可复制，但可以转移（movable）。该类允许递延锁定，定时锁定，递归锁，锁的所有权转移，使用条件变量。
-在使用上 =std::unique_lock= 要比 =std::lock_guard= 更灵活，但是更灵活的代价是占用空间相对更大一点且相对更慢一点。
+   + =std::unique_lock= 同样是具有 RAII 风格的互斥锁封装，不可复制，但可以转移（movable）。该类允许递延锁定，定时锁定，递归锁，锁的所有权转移，使用条件变量。在使用上 =std::unique_lock= 要比 =std::lock_guard= 更灵活，但是更灵活的代价是占用空间相对更大一点且相对更慢一点。
 
    + =std::scoped_lock= 多互斥的免死锁 RAII 封装。主要用于在作用域的持续时间内拥有一个或多个互斥体。
 
