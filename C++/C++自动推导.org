@@ -1,0 +1,6 @@
+#+TITLE: Modern C++的类型推导
+
+** auto
+   auto 可以在声明变量的时候根据变量初始值的类型自动为此变量选择匹配的类型。
+** decltype
+** =std::invoke_result=
