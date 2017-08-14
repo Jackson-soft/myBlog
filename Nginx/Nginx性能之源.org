@@ -12,7 +12,7 @@
 
 ** 异步事件驱动
     所有操作都是事件，所有的事件都注册到事件循环中（windows 是 iocp,linux 是 epoll 或 select,BSD 是 kqueue）
-    
+
     #+BEGIN_SRC nginx
     use epoll;
     #+END_SRC
@@ -301,15 +301,14 @@
     #+END_SRC
 
 ** 定制数据结构
-    1. * =ngx_string= *
+    1. =ngx_string=
         #+BEGIN_SRC c
         typedef struct {
             size_t      len;
             u_char     *data;
         } ngx_str_t;
         #+END_SRC
-
-    2. * =ngx_pool= *
+    2. =ngx_pool=
         #+BEGIN_SRC c
         struct ngx_pool_s {
             ngx_pool_data_t       d; //数据块
@@ -321,17 +320,30 @@
             ngx_log_t            *log;
         };
         #+END_SRC
+    3. =ngx_queue=
+    4. =ngx_rbtree=
 
-    3. * =ngx_queue= *
-
-    4. * =ngx_rbtree= *
         Nginx 中用红黑树来实现定时器，在定时器的实现中也有基于最小堆来实现的，两者区别不大：
             + 采用堆，删除时间是 O（1），但是要调整堆，logn。插入时间基本是 lgn。
             + 采用红黑树，删除节点是 3 次旋转，但是，找到最小节点要 logn。插入时间基本是 lgn。
 
-    5. *=ngx_array=*
+    5. =ngx_array=
 
-    6. *=ngx_buf=*
+        这里要注意的是 Nginx 封装的数组的 =push= 接口只是一个内存分配器，数据要在 =push= 之后添加。
+
+        #+BEGIN_SRC c
+        var = ngx_array_push(&ccf->env);
+        if (var == NULL) {
+            return NULL;
+        }
+
+        var->len = 2;
+        var->data = (u_char *) "TZ";
+
+        var = ccf->env.elts;
+        #+END_SRC
+    6. =ngx_buf=
+    7. ...
 
 * 队友神助攻
 ** epoll
@@ -347,15 +359,13 @@
     int epoll_create1(int flag);
     #+END_SRC
 
-    If flags is 0, then, other than the fact that the obsolete size argument is dropped, =epoll_create1()= is the same as =epoll_create()=.  The following value can be included in flags
-    to obtain different behavior:
-
-    EPOLL_CLOEXEC
-            Set the close-on-exec =(FD_CLOEXEC)= flag on the new file descriptor.
+    =flag= 的值可以是如下：
+        + 0 :: 与 =epoll_create= 效果相同
+        + =EPOLL_CLOEXEC= :: 与 open 时的 =O_CLOEXEC= 标志类似，即进程被替换时会关闭打开的文件描述符。
 
     epoll 对文件描述符的操作有两种模式：LT（level trigger）和 ET（edge trigger）。LT 模式是默认模式，LT 模式与 ET 模式的区别如下：
-        + LT 模式：当 =epoll_wait= 检测到描述符事件发生并将此事件通知应用程序，应用程序可以不立即处理该事件。下次调用 =epoll_wait= 时，会再次响应应用程序并通知此事件。
-        + ET 模式：当 =epoll_wait= 检测到描述符事件发生并将此事件通知应用程序，应用程序必须立即处理该事件。如果不处理，下次调用 =epoll_wait= 时，不会再次响应应用程序并通知此事件。
+        + LT 模式 :: 当 =epoll_wait= 检测到描述符事件发生并将此事件通知应用程序，应用程序可以不立即处理该事件。下次调用 =epoll_wait= 时，会再次响应应用程序并通知此事件。
+        + ET 模式 :: 当 =epoll_wait= 检测到描述符事件发生并将此事件通知应用程序，应用程序必须立即处理该事件。如果不处理，下次调用 =epoll_wait= 时，不会再次响应应用程序并通知此事件。
 
     *Nginx 在 Linux 下默认用的是 EPOLLET 模式*
 
