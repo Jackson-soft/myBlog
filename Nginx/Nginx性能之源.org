@@ -301,7 +301,7 @@
     #+END_SRC
 
 ** 定制数据结构
-    1. *=ngx_string=*
+    1. * =ngx_string= *
         #+BEGIN_SRC c
         typedef struct {
             size_t      len;
@@ -309,7 +309,7 @@
         } ngx_str_t;
         #+END_SRC
 
-    2. *=ngx_pool=*
+    2. * =ngx_pool= *
         #+BEGIN_SRC c
         struct ngx_pool_s {
             ngx_pool_data_t       d; //数据块
@@ -322,9 +322,9 @@
         };
         #+END_SRC
 
-    3. *=ngx_queue=*
+    3. * =ngx_queue= *
 
-    4. *=ngx_rbtree=*
+    4. * =ngx_rbtree= *
         Nginx 中用红黑树来实现定时器，在定时器的实现中也有基于最小堆来实现的，两者区别不大：
             + 采用堆，删除时间是 O（1），但是要调整堆，logn。插入时间基本是 lgn。
             + 采用红黑树，删除节点是 3 次旋转，但是，找到最小节点要 logn。插入时间基本是 lgn。
@@ -365,7 +365,7 @@
     listen 80 reuseport;
     #+END_SRC
 
-    *=SO_REUSEPORT= 的设置*
+    * =SO_REUSEPORT= 的设置*
     #+BEGIN_SRC C++
     int opt_val = 1;
     if(::setsockopt(mSockFD, SOL_SOCKET, SO_REUSEPORT, &opt_val, sizeof(opt_val))){
