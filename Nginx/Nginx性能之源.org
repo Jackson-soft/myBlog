@@ -4,403 +4,395 @@
 
 * 后期刷钱快
 ** Nginx 架构
+    #+BEGIN_SRC nginx
+    worker_processes  auto;
+    #+END_SRC
 
-#+BEGIN_SRC nginx
-worker_processes  auto;
-#+END_SRC
-
-[[./master.png]]
+    [[./master.png]]
 
 ** 异步事件驱动
+    所有操作都是事件，所有的事件都注册到事件循环中（windows 是 iocp,linux 是 epoll 或 select,BSD 是 kqueue）
+    
+    #+BEGIN_SRC nginx
+    use epoll;
+    #+END_SRC
 
-所有操作都是事件，所有的事件都注册到事件循环中（windows 是 iocp,linux 是 epoll 或 select,BSD 是 kqueue）
+    *非阻塞 socket*
 
-#+BEGIN_SRC nginx
-use epoll;
-#+END_SRC
+    非阻塞 =socket= 的 api 及头文件
 
-*非阻塞 socket*
-#+BEGIN_SRC c
-#include <unistd.h>
-#include <fcntl.h>
+    #+BEGIN_SRC c
+    #include <unistd.h>
+    #include <fcntl.h>
 
-int fcntl(int fd, int cmd, ... /* arg */ );
-#+END_SRC
+    int fcntl(int fd, int cmd, ... /* arg */ );
+    #+END_SRC
 
-#+BEGIN_SRC c
-#define ngx_nonblocking(s)  fcntl(s, F_SETFL, fcntl(s, F_GETFL) | O_NONBLOCK)
-#+END_SRC
+    Nginx 的非阻塞设置宏
 
-#+BEGIN_SRC c
-// nginx 事件模块的核心结构体
-struct ngx_event_s {
-    void            *data; //事件相关的数据
+    #+BEGIN_SRC c
+    #define ngx_nonblocking(s)  fcntl(s, F_SETFL, fcntl(s, F_GETFL) | O_NONBLOCK)
+    #+END_SRC
 
-    unsigned         write:1; //写事件
+    Nginx 事件模块的核心结构体
 
-    unsigned         accept:1; //监听
+    #+BEGIN_SRC c
+    struct ngx_event_s {
+        void            *data; //事件相关的数据
 
-    /* used to detect the stale events in kqueue and epoll */
-    unsigned         instance:1; //检测事件是否失效
+        unsigned         write:1; //写事件
 
-    /*
-     * the event was passed or would be passed to a kernel;
-     * in aio mode - operation was posted.
-     */
-    unsigned         active:1; // 事件是否是活跃的
+        unsigned         accept:1; //监听
 
-    unsigned         disabled:1;
+        /* used to detect the stale events in kqueue and epoll */
+        unsigned         instance:1; //检测事件是否失效
 
-    /* the ready event; in aio mode 0 means that no operation can be posted */
-    unsigned         ready:1; // 事件已经就绪
+        /*
+         * the event was passed or would be passed to a kernel;
+         * in aio mode - operation was posted.
+         */
+        unsigned         active:1; // 事件是否是活跃的
 
-    unsigned         oneshot:1;
+        unsigned         disabled:1;
 
-    /* aio operation is complete */
-    unsigned         complete:1; // 异步操作的完成标志，用于 aio 和多线程
+        /* the ready event; in aio mode 0 means that no operation can be posted */
+        unsigned         ready:1; // 事件已经就绪
 
-    unsigned         eof:1; //结束符
-    unsigned         error:1;
+        unsigned         oneshot:1;
 
-    unsigned         timedout:1; //事件超时
-    unsigned         timer_set:1; //事件是否在定时器中
+        /* aio operation is complete */
+        unsigned         complete:1; // 异步操作的完成标志，用于 aio 和多线程
 
-    unsigned         delayed:1; //事件延迟处理
+        unsigned         eof:1; //结束符
+        unsigned         error:1;
 
-    unsigned         deferred_accept:1; // 延迟接收请求
+        unsigned         timedout:1; //事件超时
+        unsigned         timer_set:1; //事件是否在定时器中
 
-    /* the pending eof reported by kqueue, epoll or in aio chain operation */
-    unsigned         pending_eof:1;
+        unsigned         delayed:1; //事件延迟处理
 
-    unsigned         posted:1; // 事件是否已经加入延后处理队列中，可以加快事件的处理速度
+        unsigned         deferred_accept:1; // 延迟接收请求
 
-    unsigned         closed:1;
+        /* the pending eof reported by kqueue, epoll or in aio chain operation */
+        unsigned         pending_eof:1;
 
-    /* to test on worker exit */
-    unsigned         channel:1;
-    unsigned         resolver:1;
+        unsigned         posted:1; // 事件是否已经加入延后处理队列中，可以加快事件的处理速度
 
-    unsigned         cancelable:1;
+        unsigned         closed:1;
 
-#if (NGX_HAVE_KQUEUE)
-    unsigned         kq_vnode:1;
+        /* to test on worker exit */
+        unsigned         channel:1;
+        unsigned         resolver:1;
 
-    /* the pending errno reported by kqueue */
-    int              kq_errno;
-#endif
+        unsigned         cancelable:1;
 
-    /*
-     * kqueue only:
-     *   accept:     number of sockets that wait to be accepted
-     *   read:       bytes to read when event is ready
-     *               or lowat when event is set with NGX_LOWAT_EVENT flag
-     *   write:      available space in buffer when event is ready
-     *               or lowat when event is set with NGX_LOWAT_EVENT flag
-     *
-     * epoll with EPOLLRDHUP:
-     *   accept:     1 if accept many, 0 otherwise
-     *   read:       1 if there can be data to read, 0 otherwise
-     *
-     * iocp: TODO
-     *
-     * otherwise:
-     *   accept:     1 if accept many, 0 otherwise
-     */
+    #if (NGX_HAVE_KQUEUE)
+        unsigned         kq_vnode:1;
 
-#if (NGX_HAVE_KQUEUE) || (NGX_HAVE_IOCP)
-    int              available;
-#else
-    unsigned         available:1;
-#endif
+        /* the pending errno reported by kqueue */
+        int              kq_errno;
+    #endif
 
-    ngx_event_handler_pt  handler; //事件发生时调用的函数
+        /*
+         * kqueue only:
+         *   accept:     number of sockets that wait to be accepted
+         *   read:       bytes to read when event is ready
+         *               or lowat when event is set with NGX_LOWAT_EVENT flag
+         *   write:      available space in buffer when event is ready
+         *               or lowat when event is set with NGX_LOWAT_EVENT flag
+         *
+         * epoll with EPOLLRDHUP:
+         *   accept:     1 if accept many, 0 otherwise
+         *   read:       1 if there can be data to read, 0 otherwise
+         *
+         * iocp: TODO
+         *
+         * otherwise:
+         *   accept:     1 if accept many, 0 otherwise
+         */
+
+    #if (NGX_HAVE_KQUEUE) || (NGX_HAVE_IOCP)
+        int              available;
+    #else
+        unsigned         available:1;
+    #endif
+
+        ngx_event_handler_pt  handler; //事件发生时调用的函数
 
 
-#if (NGX_HAVE_IOCP)
-    ngx_event_ovlp_t ovlp;
-#endif
+    #if (NGX_HAVE_IOCP)
+        ngx_event_ovlp_t ovlp;
+    #endif
 
-    ngx_uint_t       index;
+        ngx_uint_t       index;
 
-    ngx_log_t       *log; //日志
+        ngx_log_t       *log; //日志
 
-    ngx_rbtree_node_t   timer; //红黑树节点成员，用于把事件加入定时器
+        ngx_rbtree_node_t   timer; //红黑树节点成员，用于把事件加入定时器
 
-    /* the posted queue */
-    ngx_queue_t      queue; //队列成员，加入延后处理的队列
+        /* the posted queue */
+        ngx_queue_t      queue; //队列成员，加入延后处理的队列
 
-#if 0
+    #if 0
 
-    /* the threads support */
+        /* the threads support */
 
-    /*
-     * the event thread context, we store it here
-     * if $(CC) does not understand __thread declaration
-     * and pthread_getspecific() is too costly
-     */
+        /*
+         * the event thread context, we store it here
+         * if $(CC) does not understand __thread declaration
+         * and pthread_getspecific() is too costly
+         */
 
-    void            *thr_ctx;
+        void            *thr_ctx;
 
-#if (NGX_EVENT_T_PADDING)
+    #if (NGX_EVENT_T_PADDING)
 
-    /* event should not cross cache line in SMP */
+        /* event should not cross cache line in SMP */
 
-    uint32_t         padding[NGX_EVENT_T_PADDING];
-#endif
-#endif
-};
-#+END_SRC
+        uint32_t         padding[NGX_EVENT_T_PADDING];
+    #endif
+    #endif
+    };
+    #+END_SRC
 
-*http 流程的分割*
+    *http 流程的分割*
 
-#+BEGIN_SRC c
-//HTTP 请求的 11 个处理阶段
-typedef enum {
-    NGX_HTTP_POST_READ_PHASE = 0,
+    HTTP 请求的 11 个处理阶段
+        #+BEGIN_SRC c
+        typedef enum {
+            NGX_HTTP_POST_READ_PHASE = 0,
 
-    NGX_HTTP_SERVER_REWRITE_PHASE,
+            NGX_HTTP_SERVER_REWRITE_PHASE,
 
-    NGX_HTTP_FIND_CONFIG_PHASE,
-    NGX_HTTP_REWRITE_PHASE,
-    NGX_HTTP_POST_REWRITE_PHASE,
+            NGX_HTTP_FIND_CONFIG_PHASE,
+            NGX_HTTP_REWRITE_PHASE,
+            NGX_HTTP_POST_REWRITE_PHASE,
 
-    NGX_HTTP_PREACCESS_PHASE,
+            NGX_HTTP_PREACCESS_PHASE,
 
-    NGX_HTTP_ACCESS_PHASE,
-    NGX_HTTP_POST_ACCESS_PHASE,
+            NGX_HTTP_ACCESS_PHASE,
+            NGX_HTTP_POST_ACCESS_PHASE,
 
-    NGX_HTTP_TRY_FILES_PHASE,
-    NGX_HTTP_CONTENT_PHASE,
+            NGX_HTTP_TRY_FILES_PHASE,
+            NGX_HTTP_CONTENT_PHASE,
 
-    NGX_HTTP_LOG_PHASE
-} ngx_http_phases;
-#+END_SRC
+            NGX_HTTP_LOG_PHASE
+        } ngx_http_phases;
+        #+END_SRC
 
 ** 模块化
+    Nginx 的模块结构体
+        #+BEGIN_SRC c
+        struct ngx_module_s {
+            ngx_uint_t            ctx_index; //在具体类型模块（http、event 等）的全局配置结构数组的下标
+            ngx_uint_t            index; //该模块在 ngx_modules 数组中的下标
 
-#+BEGIN_SRC c
-struct ngx_module_s {
-    ngx_uint_t            ctx_index; //在具体类型模块（http、event 等）的全局配置结构数组的下标
-    ngx_uint_t            index; //该模块在 ngx_modules 数组中的下标
+            char                 *name;
 
-    char                 *name;
+            ngx_uint_t            spare0;
+            ngx_uint_t            spare1;
 
-    ngx_uint_t            spare0;
-    ngx_uint_t            spare1;
+            ngx_uint_t            version;
+            const char           *signature;
 
-    ngx_uint_t            version;
-    const char           *signature;
+            void                 *ctx; //模块的上下文属性，同一类型的模块的属性是相同的
+            ngx_command_t        *commands; //该模块支持的指令的数组，最后以一个空指令结尾
+            ngx_uint_t            type;
 
-    void                 *ctx; //模块的上下文属性，同一类型的模块的属性是相同的
-    ngx_command_t        *commands; //该模块支持的指令的数组，最后以一个空指令结尾
-    ngx_uint_t            type;
+            ngx_int_t           (*init_master)(ngx_log_t *log);
 
-    ngx_int_t           (*init_master)(ngx_log_t *log);
+            ngx_int_t           (*init_module)(ngx_cycle_t *cycle);
 
-    ngx_int_t           (*init_module)(ngx_cycle_t *cycle);
+            ngx_int_t           (*init_process)(ngx_cycle_t *cycle);
+            ngx_int_t           (*init_thread)(ngx_cycle_t *cycle);
+            void                (*exit_thread)(ngx_cycle_t *cycle);
+            void                (*exit_process)(ngx_cycle_t *cycle);
 
-    ngx_int_t           (*init_process)(ngx_cycle_t *cycle);
-    ngx_int_t           (*init_thread)(ngx_cycle_t *cycle);
-    void                (*exit_thread)(ngx_cycle_t *cycle);
-    void                (*exit_process)(ngx_cycle_t *cycle);
+            void                (*exit_master)(ngx_cycle_t *cycle);
 
-    void                (*exit_master)(ngx_cycle_t *cycle);
+            uintptr_t             spare_hook0;
+            uintptr_t             spare_hook1;
+            uintptr_t             spare_hook2;
+            uintptr_t             spare_hook3;
+            uintptr_t             spare_hook4;
+            uintptr_t             spare_hook5;
+            uintptr_t             spare_hook6;
+            uintptr_t             spare_hook7;
+        };
+        #+END_SRC
 
-    uintptr_t             spare_hook0;
-    uintptr_t             spare_hook1;
-    uintptr_t             spare_hook2;
-    uintptr_t             spare_hook3;
-    uintptr_t             spare_hook4;
-    uintptr_t             spare_hook5;
-    uintptr_t             spare_hook6;
-    uintptr_t             spare_hook7;
-};
-#+END_SRC
+    *动态模块加载*
 
-*动态模块加载*
+    Nginx 1.9.11 后支持动态模块加载。作为动态模块必须是在 ~configure --with~ 后追加 ~=dynamic~ 参数来生成动态可加载的共享对象。如下：
 
-Nginx 1.9.11 后支持动态模块加载。作为动态模块必须是在 ~configure --with~ 后追加 ~=dynamic~ 参数来生成动态可加载的共享对象。如下：
+    #+BEGIN_SRC c
+    ./configure --with-http_geoip_module=dynamic \
+    --with-http_image_filter_module=dynamic \
+    --with-mail=dynamic \
+    --with-stream=dynamic \
+    --with-http_xslt_module=dynamic
+    #+END_SRC
 
-#+BEGIN_SRC c
-./configure --with-http_geoip_module=dynamic \
---with-http_image_filter_module=dynamic \
---with-mail=dynamic \
---with-stream=dynamic \
---with-http_xslt_module=dynamic
-#+END_SRC
+    编译完成后会在默认的路径为/usr/local/nginx/modules 的目录来存放动态模块的二进制文件。
 
-编译完成后会在默认的路径为/usr/local/nginx/modules 的目录来存放动态模块的二进制文件。
+    加载动态模块是需添加如下配置：
+        #+Begin_SRC nginx
+        load_module "modules/ngx_http_geoip_module.so";
+        load_module "modules/ngx_stream_module.so";
+        #+END_SRC
 
-加载动态模块是需添加如下配置：
+    *极致的模块化？(好还是不好)*
 
-#+Begin_SRC nginx
-load_module "modules/ngx_http_geoip_module.so";
-load_module "modules/ngx_stream_module.so";
-#+END_SRC
+    Redis 4.0 也加入对模块的支持
 
-*极致的模块化？(好还是不好）*
-
-redis 4.0 也加入对模块的支持
-
-#+BEGIN_SRC c
-ngx_module_t *ngx_modules[] = {
-    &ngx_core_module,
-    &ngx_errlog_module,
-    &ngx_conf_module,
-    &ngx_regex_module,
-    &ngx_events_module,
-    &ngx_event_core_module,
-    &ngx_epoll_module,
-    &ngx_http_module,
-    &ngx_http_core_module,
-    &ngx_http_log_module,
-    &ngx_http_upstream_module,
-    &ngx_http_static_module,
-    &ngx_http_autoindex_module,
-    &ngx_http_index_module,
-    &ngx_http_auth_basic_module,
-    &ngx_http_access_module,
-    &ngx_http_limit_conn_module,
-    &ngx_http_limit_req_module,
-    &ngx_http_geo_module,
-    &ngx_http_map_module,
-    &ngx_http_split_clients_module,
-    &ngx_http_referer_module,
-    &ngx_http_rewrite_module,
-    &ngx_http_proxy_module,
-    &ngx_http_fastcgi_module,
-    &ngx_http_uwsgi_module,
-    &ngx_http_scgi_module,
-    &ngx_http_memcached_module,
-    &ngx_http_empty_gif_module,
-    &ngx_http_browser_module,
-    &ngx_http_upstream_hash_module,
-    &ngx_http_upstream_ip_hash_module,
-    &ngx_http_upstream_least_conn_module,
-    &ngx_http_upstream_keepalive_module,
-    &ngx_http_upstream_zone_module,
-    &ngx_http_write_filter_module,
-    &ngx_http_header_filter_module,
-    &ngx_http_chunked_filter_module,
-    &ngx_http_range_header_filter_module,
-    &ngx_http_gzip_filter_module,
-    &ngx_http_postpone_filter_module,
-    &ngx_http_ssi_filter_module,
-    &ngx_http_charset_filter_module,
-    &ngx_http_userid_filter_module,
-    &ngx_http_headers_filter_module,
-    &ngx_http_copy_filter_module,
-    &ngx_http_range_body_filter_module,
-    &ngx_http_not_modified_filter_module,
-    NULL
-};
-#+END_SRC
+    Nginx 在 config 之后的模块数组
+    #+BEGIN_SRC c
+    ngx_module_t *ngx_modules[] = {
+        &ngx_core_module,
+        &ngx_errlog_module,
+        &ngx_conf_module,
+        &ngx_regex_module,
+        &ngx_events_module,
+        &ngx_event_core_module,
+        &ngx_epoll_module,
+        &ngx_http_module,
+        &ngx_http_core_module,
+        &ngx_http_log_module,
+        &ngx_http_upstream_module,
+        &ngx_http_static_module,
+        &ngx_http_autoindex_module,
+        &ngx_http_index_module,
+        &ngx_http_auth_basic_module,
+        &ngx_http_access_module,
+        &ngx_http_limit_conn_module,
+        &ngx_http_limit_req_module,
+        &ngx_http_geo_module,
+        &ngx_http_map_module,
+        &ngx_http_split_clients_module,
+        &ngx_http_referer_module,
+        &ngx_http_rewrite_module,
+        &ngx_http_proxy_module,
+        &ngx_http_fastcgi_module,
+        &ngx_http_uwsgi_module,
+        &ngx_http_scgi_module,
+        &ngx_http_memcached_module,
+        &ngx_http_empty_gif_module,
+        &ngx_http_browser_module,
+        &ngx_http_upstream_hash_module,
+        &ngx_http_upstream_ip_hash_module,
+        &ngx_http_upstream_least_conn_module,
+        &ngx_http_upstream_keepalive_module,
+        &ngx_http_upstream_zone_module,
+        &ngx_http_write_filter_module,
+        &ngx_http_header_filter_module,
+        &ngx_http_chunked_filter_module,
+        &ngx_http_range_header_filter_module,
+        &ngx_http_gzip_filter_module,
+        &ngx_http_postpone_filter_module,
+        &ngx_http_ssi_filter_module,
+        &ngx_http_charset_filter_module,
+        &ngx_http_userid_filter_module,
+        &ngx_http_headers_filter_module,
+        &ngx_http_copy_filter_module,
+        &ngx_http_range_body_filter_module,
+        &ngx_http_not_modified_filter_module,
+        NULL
+    };
+    #+END_SRC
 
 ** 定制数据结构
+    1. *=ngx_string=*
+        #+BEGIN_SRC c
+        typedef struct {
+            size_t      len;
+            u_char     *data;
+        } ngx_str_t;
+        #+END_SRC
 
-*=ngx_string=*
+    2. *=ngx_pool=*
+        #+BEGIN_SRC c
+        struct ngx_pool_s {
+            ngx_pool_data_t       d; //数据块
+            size_t                max; //数据块大小，即小块内存的最大值
+            ngx_pool_t           *current; //链表中当前正在使用的节点
+            ngx_chain_t          *chain; //可以挂一个 chain 结构
+            ngx_pool_large_t     *large; //分配大块内存用，即超过 max 的内存请求
+            ngx_pool_cleanup_t   *cleanup; //释放内存池的 callback
+            ngx_log_t            *log;
+        };
+        #+END_SRC
 
-#+BEGIN_SRC c
-typedef struct {
-    size_t      len;
-    u_char     *data;
-} ngx_str_t;
-#+END_SRC
+    3. *=ngx_queue=*
 
-*~ngx_pool~*
-#+BEGIN_SRC c
-struct ngx_pool_s {
-    ngx_pool_data_t       d; //数据块
-    size_t                max; //数据块大小，即小块内存的最大值
-    ngx_pool_t           *current; //链表中当前正在使用的节点
-    ngx_chain_t          *chain; //可以挂一个 chain 结构
-    ngx_pool_large_t     *large; //分配大块内存用，即超过 max 的内存请求
-    ngx_pool_cleanup_t   *cleanup; //释放内存池的 callback
-    ngx_log_t            *log;
-};
-#+END_SRC
+    4. *=ngx_rbtree=*
+        Nginx 中用红黑树来实现定时器，在定时器的实现中也有基于最小堆来实现的，两者区别不大：
+            + 采用堆，删除时间是 O（1），但是要调整堆，logn。插入时间基本是 lgn。
+            + 采用红黑树，删除节点是 3 次旋转，但是，找到最小节点要 logn。插入时间基本是 lgn。
 
-*=ngx_queue=*
+    5. *=ngx_array=*
 
-*=ngx_rbtree=*
-
-Nginx 中用红黑树来实现定时器，在定时器的实现中也有基于最小堆来实现的，两者区别不大：
-
-采用堆，删除时间是 O（1），但是要调整堆，logn。插入时间基本是 lgn。
-
-采用红黑树，删除节点是 3 次旋转，但是，找到最小节点要 logn。插入时间基本是 lgn。
-
-*=ngx_array=*
-
-*=ngx_buf=*
+    6. *=ngx_buf=*
 
 * 队友神助攻
 ** epoll
+    #+BEGIN_SRC c
+    int epoll_create(int size)；
+    int epoll_ctl(int epfd, int op, int fd, struct epoll_event *event)；
+    int epoll_wait(int epfd, struct epoll_event * events, int maxevents, int timeout);
+    #+END_SRC
 
-#+BEGIN_SRC c
-int epoll_create(int size)；
-int epoll_ctl(int epfd, int op, int fd, struct epoll_event *event)；
-int epoll_wait(int epfd, struct epoll_event * events, int maxevents, int timeout);
-#+END_SRC
+    Since Linux 2.6.8, the size argument is ignored, but must be greater than zero;
 
-Since Linux 2.6.8, the size argument is ignored, but must be greater than zero;
+    #+BEGIN_SRC c
+    int epoll_create1(int flag);
+    #+END_SRC
 
-#+BEGIN_SRC c
-int epoll_create1(int flag);
-#+END_SRC
+    If flags is 0, then, other than the fact that the obsolete size argument is dropped, =epoll_create1()= is the same as =epoll_create()=.  The following value can be included in flags
+    to obtain different behavior:
 
-If flags is 0, then, other than the fact that the obsolete size argument is dropped, =epoll_create1()= is the same as =epoll_create()=.  The following value can be included in flags
-to obtain different behavior:
+    EPOLL_CLOEXEC
+            Set the close-on-exec =(FD_CLOEXEC)= flag on the new file descriptor.
 
-EPOLL_CLOEXEC
-        Set the close-on-exec =(FD_CLOEXEC)= flag on the new file descriptor.
+    epoll 对文件描述符的操作有两种模式：LT（level trigger）和 ET（edge trigger）。LT 模式是默认模式，LT 模式与 ET 模式的区别如下：
+        + LT 模式：当 =epoll_wait= 检测到描述符事件发生并将此事件通知应用程序，应用程序可以不立即处理该事件。下次调用 =epoll_wait= 时，会再次响应应用程序并通知此事件。
+        + ET 模式：当 =epoll_wait= 检测到描述符事件发生并将此事件通知应用程序，应用程序必须立即处理该事件。如果不处理，下次调用 =epoll_wait= 时，不会再次响应应用程序并通知此事件。
 
-epoll 对文件描述符的操作有两种模式：LT（level trigger）和 ET（edge trigger）。LT 模式是默认模式，LT 模式与 ET 模式的区别如下：
-
-LT 模式：当 =epoll_wait= 检测到描述符事件发生并将此事件通知应用程序，应用程序可以不立即处理该事件。下次调用 =epoll_wait= 时，会再次响应应用程序并通知此事件。
-
-ET 模式：当 =epoll_wait= 检测到描述符事件发生并将此事件通知应用程序，应用程序必须立即处理该事件。如果不处理，下次调用 =epoll_wait= 时，不会再次响应应用程序并通知此事件。
-
-*Nginx 用的是 EPOLLET 模式*
+    *Nginx 在 Linux 下默认用的是 EPOLLET 模式*
 
 ** REUSEPORT
-*惊群效应*
+    *惊群效应*
+    #+BEGIN_SRC nginx
+    listen 80 reuseport;
+    #+END_SRC
 
-#+BEGIN_SRC nginx
-listen 80 reuseport;
-#+END_SRC
+    *=SO_REUSEPORT= 的设置*
+    #+BEGIN_SRC C++
+    int opt_val = 1;
+    if(::setsockopt(mSockFD, SOL_SOCKET, SO_REUSEPORT, &opt_val, sizeof(opt_val))){
+        std::cout << "set reuseport error: " << errno << std::endl;
+    }
+    #+END_SRC
 
-*=SO_REUSEPORT= 的设置*
+    Nginx 开启 reuseport 后对请求延迟与 CPU 负载均衡有较大提升
 
-#+BEGIN_SRC C++
-int opt_val = 1;
-if(::setsockopt(mSockFD, SOL_SOCKET, SO_REUSEPORT, &opt_val, sizeof(opt_val))){
-    std::cout << "set reuseport error: " << errno << std::endl;
-}
-#+END_SRC
+    [[./reuseport.jpg]]
 
-Nginx 开启 reuseport 后对请求延迟与 CPU 负载均衡有较大提升
+    !!!(注意)这个特性是在 Nginx1.9.1 与 Kernel3.9 之后才有的(Kernel4.5 对 UDP 的 reuseport 有优化，Kernel4.6 对 TCP 的 reuseport 有优化)
 
-[[./reuseport.jpg]]
+    *reuseport 的内核大概实现*
 
-!!!(注意)这个特性是在 Nginx1.9.1 与 Kernel3.9 之后才有的(Kernel4.5 对 UDP 的 reuseport 有优化，Kernel4.6 对 TCP 的 reuseport 有优化)
+     数据源的 hash(ip:port)%n
 
-
-*reuseport 的内核大概实现*
-
-  数据源的 hash(ip:port)%n
-
-*hash 一致性*
+    *hash 一致性*
 
 ** AIO
+    #+BEGIN_SRC nginx
+    sendfile       on; // Nginx 是一个静态文件服务器
+    aio            threads;
+    directio       8m;
+    #+END_SRC
 
-#+BEGIN_SRC nginx
-sendfile       on; // Nginx 是一个静态文件服务器
-aio            threads;
-directio       8m;
-#+END_SRC
+    On Linux, AIO can be used starting from kernel version 2.6.22. Also, it is necessary to enable directio, or otherwise reading will be blocking.
 
-On Linux, AIO can be used starting from kernel version 2.6.22. Also, it is necessary to enable directio, or otherwise reading will be blocking.
-
-By default, multi-threading is disabled, it should be enabled with the --with-threads configuration parameter. Currently, multi-threading is compatible only with the epoll, 
-kqueue, and eventport methods. Multi-threaded sending of files is only supported on Linux.
+    By default, multi-threading is disabled, it should be enabled with the --with-threads configuration parameter. Currently, multi-threading is compatible only with the epoll,
+    kqueue, and eventport methods. Multi-threaded sending of files is only supported on Linux.
