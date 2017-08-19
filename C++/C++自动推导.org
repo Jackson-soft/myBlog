@@ -1,13 +1,90 @@
 #+TITLE: Modern C++的类型推导
-
 ** auto
-   auto 可以在声明变量的时候根据变量初始值的类型自动为此变量选择匹配的类型。
-** decltype
-   decltype 适用于推导表达式类型。
-关于 decltype 是一个操作符，其可以评估括号内表达式的类型，其规则如下：
+   auto 可以在声明变量的时候根据变量初始值的类型自动为此变量选择匹配的类型。 =auto= 的自动类型推断是发生在编译期
+，并不是像 =typeid= 一样是在运行期。
 
-如果表达式 e 是一个变量，那么就是这个变量的类型。
-如果表达式 e 是一个函数，那么就是这个函数返回值的类型。
-如果不符合 1 和 2，如果 e 是左值，类型为 T，那么 decltype(e)是 T&；如果是右值，则是 T。
+   =auto= 的基本用法：
+   + 用于代替冗长复杂、变量使用范围专一的变量声明 :: 对于 C++内建的基本数据类型，其实个人觉得还是不要用 =auto= 为好。
+   #+BEGIN_SRC C++
+   #include <string>
+   #include <array>
+   int main()
+   {
+       std::array<std::string, 4> as{"ss", "dd", "cc", "aa"};
+       // for (const auto &it : as) {
+       for (std::array<std::string, 4>::iterator it = as.begin(); it != as.end(); it++) {
+       	//do something
+       }
+       return 0;
+   }
+   #+END_SRC
+   + 模板函数依赖于模板参数的返回值 :: 这里是 C++的返回值后置语法， =auto= 作为占位符。
+   #+BEGIN_SRC C++
+   template<typename T, typename U>
+   decltype(auto) mul(T t, U u)
+   {
+       return t * u;
+   }
+   #+END_SRC
+   + 函数返回值及参数 :: C++14 中 =auto= 也可用于函数返回值和参数。
+   #+BEGIN_SRC C++
+   auto sum(auto x, auto y)
+   {
+       return x + y;
+   }
+   #+END_SRC
+
+   类型推导规则:
+   + =auto= 定义变量时，必须初始化。编译器的推导依赖于变量的初始化值。
+   #+BEGIN_SRC C++
+   auto a = { 1 };// 推导为 std::initializer_list<int>。
+   auto b{ 1 }; //推导为 int。
+   auto c = { 1, 2 };// 推导为 std::initializer_list<int>。
+   auto d{ 1, 2 }; // 不合法，程序编译不通过。
+   #+END_SRC
+
+   对于直接列表初始化，如果列表具有单个元素，则会推导类型为 T，当列表具有多个元素时不合法。
+
+   对于拷贝列表初始化，如果所有元素类型相同，则会推导类型为 =std::initializer_list<T>= 。
+
+   + 类型标识符是指针或引用，但不是 forwarding reference（universal reference by Scott Meyers）。则：忽略初始化表达式引用符号（&），再进行模式匹配.
+   #+BEGIN_SRC C++
+   const int& x = 3;
+   auto& y = x; // auto is const int, y is const int&
+   #+END_SRC
+   + 类型标识符是 forwarding reference。则：如果初始化表达式是左值，则匹配为左值引用；如果初始化表达式是右值，则匹配为右值引用.
+   + 类型标识符既不是指针也不是引用。则：如果初始化表达式为引用，则忽略引用符号（&），忽略后，继续忽略顶级（top-level）const 和 volatile，再进行模式匹配.
+** decltype
+   =decltype= 适用于推导表达式类型。但要注意的是 =decltype= 是一个操作符。
+
+   类似于  =sizeof= 操作符， =decltype= 不对其操作数求值。粗略来说， =decltype(e)= 返回类型前，进行了如下推导：
+   + 若表达式 e 为一个无括号的变量、函数参数、类成员访问，那么返回类型即为该变量或参数或类成员在源程序中的“声明类型”；
+   + 否则的话，根据表达式的值分类（value categories），设 T 为 e 的类型：
+     + 若 e 是一个左值（lvalue，即“可寻址值”），则 decltype(e)将返回 T&；
+     + 若 e 是一个临终值（xvalue），则返回值为 T&&；
+     + 若 e 是一个纯右值（prvalue），则返回值为 T。
 ** =std::invoke_result=
-   =std::invoke_result= 是 C++17 中用于替换 =std::result_of= ，用于推导函数返回值类型。
+   =std::invoke_result= 是 C++17 中用于替换 =std::result_of= ，用于编译期推导可调用表达式的返回类型，一般用于模板编程。
+   #+BEGIN_SRC C++
+   template< class F, class... ArgTypes>
+   class invoke_result;
+   #+END_SRC
+
+   #+BEGIN_SRC C++
+   #include <iostream>
+   #include <type_traits>
+
+   int sum(int x, int y) { return x * y; }
+
+   template <typename F, typename... Arges>
+   auto Something(F &&f, Arges &&... arges) -> std::result_of_t<F(Arges...)>
+   {
+       return f(arges...);
+   }
+
+   int main()
+   {
+       std::cout << Something(sum, 3, 4) << std::endl;
+       return 0;
+   }
+   #+END_SRC
