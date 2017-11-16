@@ -33,19 +33,35 @@
     M 个用户级线程对应 N 个内核级线程
 * 协程调度
   这里主要说的是 =Golang= 与 =C++= 的调度方式。
-  在 =Golang= 里协程叫 =goroutine= ，
 
-  [[./goroutine.png]]
+  在 =Golang= 里协程叫 =goroutine= ，是一种类似协程的结构（并非真正意义上的协程）。其原因是 =Golang= 的 =runtime= 实现了 =M：N= 的系统调度模型，将 =goroutine= 模拟成类线程（但又是轻量级线程）。
+其调度方式如下：
 
-  =C++= 的协程实现方式是非对称式，第一类级，无栈式。
+  
 
+[[./goroutine.png]]
+  
+  M 代表 OS 的线程，P 代表当前系统的处理器数（ =runtime= 会检测当前处理器核数，这个是并行的前提，也是最大并行的能力），G 代表 =Golang= 语言的用户级线程，也就是通常所说的 =goroutine= 。
+M 必须与 P 绑定方能执行任务 G。具体如下图：
+  [[./pmg.jpg]]
 
-参考文档：
+  从架构上来看，何其像 =Nginx= 的多进程+线程池模型。:)
 
-[[https://www.amazon.cn/%E6%93%8D%E4%BD%9C%E7%B3%BB%E7%BB%9F%E6%A6%82%E5%BF%B5-%E8%A5%BF%E5%B0%94%E4%BC%AF%E6%9F%A5%E8%8C%A8/dp/B004OQE8BI/ref=sr_1_1?ie=UTF8&qid=1509954065&sr=8-1&keywords=%E6%93%8D%E4%BD%9C%E7%B3%BB%E7%BB%9F%E6%A6%82%E5%BF%B5][操作系统概念(第 7 版)]]
+  从实现上来看， =goroutine= 在创建上为了性能也实现了线程池的复用特性（协程池）。
 
-[[http://llvm.org/docs/Coroutines.html][Coroutines in LLVM]]
+  从调度策略来看， =Golang= 完全是协作式调度，一个执行中的 =goroutine= 仅在操作被阻塞或显示让出处理器时被切换出去， =goroutine= 之间也没有优先级之分。
+值得注意的是在 =Golang= 1.2 版之后，增加了一些简单的抢占机制，但仅有用户程序函数调用时刻才可能触发抢占的判断，并不是真正意义上的抢占。
 
-[[https://github.com/qyuhen/book/blob/master/Go%201.5%20%E6%BA%90%E7%A0%81%E5%89%96%E6%9E%90%20%EF%BC%88%E4%B9%A6%E7%AD%BE%E7%89%88%EF%BC%89.pdf][Go 1.5 源码剖析]]
+  在使用 =goroutine= 的时候有这么一条要求： 不要通过共享内存来通信，而应该通过通信来共享内存。
 
-[[http://www.modernescpp.com/index.php/coroutines][C++20 Coroutines]]
+  =C++= 的协程实现方式是非对称式，第一类级，无栈式。底层实现为线程池。
+
+* 参考文档
+
+- [[https://www.amazon.cn/%E6%93%8D%E4%BD%9C%E7%B3%BB%E7%BB%9F%E6%A6%82%E5%BF%B5-%E8%A5%BF%E5%B0%94%E4%BC%AF%E6%9F%A5%E8%8C%A8/dp/B004OQE8BI/ref=sr_1_1?ie=UTF8&qid=1509954065&sr=8-1&keywords=%E6%93%8D%E4%BD%9C%E7%B3%BB%E7%BB%9F%E6%A6%82%E5%BF%B5][操作系统概念(第 7 版)]]
+
+- [[http://llvm.org/docs/Coroutines.html][Coroutines in LLVM]]
+
+- [[https://github.com/qyuhen/book/blob/master/Go%201.5%20%E6%BA%90%E7%A0%81%E5%89%96%E6%9E%90%20%EF%BC%88%E4%B9%A6%E7%AD%BE%E7%89%88%EF%BC%89.pdf][Go 1.5 源码剖析]]
+
+- [[http://www.modernescpp.com/index.php/coroutines][C++20 Coroutines]]0
