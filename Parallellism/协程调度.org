@@ -1,0 +1,141 @@
+#+LATEX_CLASS: jacksoncy-org-article
+
+#+TITLE: 协程调度
+
+* 简单科普
+*** 并发与并行
+    [[./parallelism.png]]
+
+    并发讲究的是任务的切分（就如 =Nginx= 里将一个完整的 =HTTP= 请求拆分成 11 个任务片段），提高系统并发量。
+
+    并行是同时执行任务，提高系统的吞吐量（前提必须是硬件的多核）。
+*** 硬件并行架构
+    摩尔定律：积体电路上可容纳的电晶体（晶体管）数目，约每隔两年便会增加一倍。
+
+    近年来随着摩尔定律的失效，各 =CPU= 厂商开始多核心架构设计进而带动软件的并行化。
+*** 协程与线程
+    进程是程序的基本执行实体，线程是独立调度和分派的基本单位。
+    
+    协程最初在 1963 年被公开提出（PS：这个比进程概念要早）。
+
+    对于进程、线程，都是由内核进行调度，有 =CPU= 时间片的概念，进行 *抢占式调度* （当然还有其他多种调度算法，毕竟线程调度是操作系统非常复杂的一部分）。
+
+    对于协程(用户级线程)，这是对内核透明的，也就是系统并不知道有协程的存在，是完全由用户自己的程序进行调度的，因为是由用户程序自己控制，那么就很难像抢占式调度那样做到强制的 =CPU= 控制权切换到其他进程/线程，
+通常只能进行 *协作式调度* ，需要协程自己主动把控制权转让出去之后，其他协程才能被执行到(这是标准协程的实现方法，在 =goroutine= 的实现中则有类似于内核线程调度的算法)。
+*** =coroutine= 类型
+    - =stackfull= 协程 :: 易用性和灵活性非常高，但是内存使用过大。
+      - 对称协程只提供一种传递操作，用于在协程间直接传递控制，协程每次需要挂起时需要指定一个明确切换的目标协程，也就是说控制权只能在协程间跳转。
+      - 非对称协程提供调用和挂起两种操作，挂起时控制权返回给调用者。被调用的协程可以看成时从属于调用者，这种协程在日常使用中更常见，上文的例子就属于非对称式。
+    - =stackless= 协程 :: 切换效率和内存利用率很高，更加轻量，但是使用上限制较多。（PS：协程未来的究级进化体，C#的 async/await 之类）
+
+* 线程调度
+*** 1:1
+    一个用户级线程对应一个内核级线程，这时可以利用多核，但是上下文 =switch= 很慢。
+*** N:1
+    N 个用户级线程对应一个内核级线程， =context= 上下文切换确实很快，但是无法真正的利用多核。
+*** M:N
+    M 个用户级线程对应 N 个内核级线程
+* 协程调度
+*** =Golang= 的调度系统
+    在 =Golang= 里协程叫 =goroutine= ，是一种类似协程的结构（并非真正意义上的协程）。其原因是 =Golang= 的 =runtime= 实现了 =M：N= 的系统调度模型，将 =goroutine= 模拟成类线程（但又是轻量级线程）。
+其调度方式如下：
+
+    [[./goroutine.png]]
+  
+    M 代表 OS 的线程，P 代表当前系统的处理器数（ =runtime= 会检测当前处理器核数，这个是并行的前提，也是最大并行的能力），G 代表 =Golang= 语言的用户级线程，也就是通常所说的 =goroutine= 。
+M 必须与 P 绑定方能执行任务 G。
+
+    从架构上来看，何其像 =Nginx= 的多进程+线程池模型。:)
+
+    从实现上来看， =goroutine= 在创建上为了性能也实现了线程池的复用特性（协程池）。
+
+    从调度策略来看， =Golang= 完全是协作式调度，一个执行中的 =goroutine= 仅在操作被阻塞或显示让出处理器时被切换出去， =goroutine= 之间也没有优先级之分。
+值得注意的是在 =Golang= 1.2 版之后，增加了一些简单的抢占机制，但仅有用户程序函数调用时刻才可能触发抢占的判断，并不是真正意义上的抢占。
+
+*** =Golang= 并发同步
+    在多线程编程中，我们一定会遇到数据竞态问题，这个时候我们需要一种锁机制来同步竞态数据。比较常规的手段有互斥对象、条件变量、原子操作，内存序等等。但在多线程编程中无锁编程一直是我们孜孜不倦的追求。
+=Golang= 给我们提供一种外观上的无锁同步机制 -- =Channel= ，类似于 =Unix= 的管道。
+
+    =Channel= 的底层结构：
+    #+BEGIN_SRC go
+    type hchan struct {
+        qcount   uint           // total data in the queue
+        dataqsiz uint           // size of the circular queue
+        buf      unsafe.Pointer // points to an array of dataqsiz elements
+        elemsize uint16
+        closed   uint32
+        elemtype *_type // element type
+        sendx    uint   // send index
+        recvx    uint   // receive index
+        recvq    waitq  // list of recv waiters
+        sendq    waitq  // list of send waiters
+
+        // lock protects all fields in hchan, as well as several
+        // fields in sudogs blocked on this channel.
+        //
+        // Do not change another G's status while holding this lock
+        // (in particular, do not ready a G), as this can deadlock
+        // with stack shrinking.
+        lock mutex
+    }
+    #+END_SRC
+
+    =Channel= 的声明方式：
+    #+BEGIN_SRC go
+    ChannelType = ( "chan" | "chan" "<-" | "<-" "chan" ) ElementType .
+    #+END_SRC
+
+    在使用 =Golang= 并发编程的时候有这么一条要求： *不要通过共享内存来通信，而应该通过通信来共享内存* 。这个通信的重担主要是在 =Channel= 身上。
+    #+BEGIN_SRC go
+    package main
+
+    import (
+        "fmt"
+        "sync"
+    )
+
+    func main() {
+        ch := make(chan int64) //非缓冲性，主要用于竞态数据同步
+        ch2 := make(chan int64, 3) //缓冲性，主要用于消息传递
+
+        go func() {
+            ch <- int64(4)
+        }()
+
+        go func() {
+            for i := 0; i < 3; i++ {
+                ch2 <- int64(i)
+            }
+        }()
+
+        var wg sync.WaitGroup
+        go func() {
+            wg.Add(1)
+            for i := 0; i < 3; i++ {
+                v := <-ch2
+                fmt.Println(v)
+            }
+            wg.Done()
+        }()
+
+        fmt.Println(<-ch)
+        wg.Wait()
+    }
+    #+END_SRC
+
+*** C++20 的协程实现方式
+    =C++= 的协程实现方式是非对称式，第一类级，无栈式。底层实现为线程池。C++20 的协程可能实现如下图：
+
+  [[./coroutine.png]]
+
+* 参考文档
+
+- [[https://www.amazon.cn/%E6%93%8D%E4%BD%9C%E7%B3%BB%E7%BB%9F%E6%A6%82%E5%BF%B5-%E8%A5%BF%E5%B0%94%E4%BC%AF%E6%9F%A5%E8%8C%A8/dp/B004OQE8BI/ref=sr_1_1?ie=UTF8&qid=1509954065&sr=8-1&keywords=%E6%93%8D%E4%BD%9C%E7%B3%BB%E7%BB%9F%E6%A6%82%E5%BF%B5][操作系统概念(第 7 版)]]
+
+- [[http://llvm.org/docs/Coroutines.html][Coroutines in LLVM]]
+
+- [[https://github.com/qyuhen/book/blob/master/Go%201.5%20%E6%BA%90%E7%A0%81%E5%89%96%E6%9E%90%20%EF%BC%88%E4%B9%A6%E7%AD%BE%E7%89%88%EF%BC%89.pdf][Go 1.5 源码剖析]]
+
+- [[http://www.modernescpp.com/index.php/coroutines][C++20 Coroutines]]
+
+- [[https://github.com/k2huang/blogpost/blob/master/golang/%E5%B9%B6%E5%8F%91%E7%BC%96%E7%A8%8B/%E5%B9%B6%E5%8F%91%E6%9C%BA%E5%88%B6/Go%E5%B9%B6%E5%8F%91%E6%9C%BA%E5%88%B6.md][Go 并发机制]]
