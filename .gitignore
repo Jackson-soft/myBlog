@@ -2,3 +2,4 @@ auto/
 *.bbl 
 *.pdf 
 *.tex
+*.log
