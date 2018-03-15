@@ -1,23 +1,23 @@
 #+LATEX_CLASS: jacksoncy-org-article
 
-#+TITLE: Golang 的 GC 探究
+#+TITLE: Golang 的 GC 浅析
 
 * 变量的生命同期
 ** 栈中的变量
-   栈中的变量就是一个代码块中的变量(内存的申请与释放都是由系统来做）。在 =Golang= 中由于不容许重复定义变量，所以我们可以看一下 =C++= 的例子：
+   栈中的变量就是一个代码块中的变量(内存的申请与释放都是由系统来做）。
 
-#+BEGIN_SRC C++
-  #include <iostream>
+#+BEGIN_SRC go
+  package main
 
-  int main()
-  {
-      int a{3};
+  import "fmt"
+
+  func main() {
       {
-          int a{5};
-          std::cout << a << " ,Pointer: " << &a << std::endl;
+          one := 2
+          fmt.Printf("one is %d, point is %v\n", one, &one)
       }
-      std::cout << a << " ,Pointer: " << &a << std::endl;
-      return 0;
+      one := 4
+      fmt.Printf("one is %d, point is %v\n", one, &one)
   }
 #+END_SRC
 
@@ -25,23 +25,23 @@
 
 [[file:test.png]]
 
-可以看到，不同栈中的变量不会是同一个，栈中的变量会随着代码块的结束而消亡（压栈与弹栈过程）。所以有时候我们可以用代码块特性来做一些局部变量的控制。
+可以看到，不同栈中的相同变量名的地址不是同一个，栈中的变量会随着代码块的结束而消亡（压栈与弹栈过程）。所以有时候我们可以用代码块特性来做一些局部变量的控制。
 
 ** 堆中的变量
    堆中的变量就意味着是由程序员主动向系统申请的内存地址，一般是由特定关键字来操作（比如 =new= 、 =malloc= )，同时也意味着内存的回收工作也是由程序员来做。其生命周期是一直到回收为止，
 如果没有回收就是内存泄漏。所以 =GC= 的主要工作是回收这部分变量的内存。
 ** 变量逃逸
    =Golang= 在一定程度消除了堆和栈的区别，因为 =Golang= 在编译的时候进行逃逸分析，来决定一个对象放栈上还是放堆上，不逃逸的对象放栈上，可能逃逸的放堆上。
-所以在 =Golang= 中你可以在一个函数中返回一个局部变量。就像下面这样：
+所以在 =Golang= 中你可以在一个函数中返回一个局部变量地址。就像下面这样：
 
 #+BEGIN_SRC go
-  func RetSome() string {
+  func RetSome() *string {
       str := "this is a string"
-      return str
+      return &str
   }
 #+END_SRC
 
-所以我们要注意的是虽然这种写法是正确的，但在实际编程中是万万不可取的(因为每一次变量逃逸都涉及两次内存分配，不但性能上有损失，而且不符编程规范)。
+所以我们要注意的是虽然这种写法在 =Golang= 中是正确的，但在实际编程中是万万不可取的(因为每一次变量逃逸都涉及两次内存分配，不但性能上有损失，而且不符编程规范)。
 
 * 引用计数
   引用计数在现代语言的 =GC= 中已很少使用了，但是这个技术在目前的内存管理技术中是非常实用的。引用计数的简单描述就是让每一个被管理的对象与一个引用计数器关联在一起，计数器记录着该对象当前被引用的次数，
@@ -51,18 +51,45 @@
 
   所以在 =C++= 中有两个智能指针 -- 强引用型(=std::shared_ptr=)、弱引用型(=std::weak_ptr=)。
 
-* Golang 的内存分配（Tcmalloc)
+* Golang 的内存分配（TCMalloc)
   内存分配就目前来说优秀的大概就是 =glibc= 中的 =ptmalloc= 、 =facebook= 的 =jemalloc= 、 =google= 的 =tcmalloc= 。其中以 =ptmalloc= 应用最广泛，但后两者以架构优秀、性能高、不易出现内存碎片而
-出名。而 =Golang= 出自 =google= 之手，内存分配自然是站在 =tcmalloc= 这个巨人的肩膀上啦。
+出名。而 =Golang= 出自 =google= 之手，内存分配自然是站在 =tcmalloc= 这个巨人的肩膀上。
+
+  =TCMalloc= 的大概架构：
+  
+  =TCMalloc= 就是 =Thread-Caching Malloc= 的缩写，所以它的基本架构就是以线程为单元。 =TCMalloc= 区别的对待大、小对象（<=32KB 的对象被称作是小对象，>32KB 的是大对象）。它为每个线程分配了一个线程局
+部的 =cache= ，线程需要的小对象都是在其 =cache= 中分配的，由于是 =thread local= 的，所以基本上是无锁操作（在 =cache= 不够，需要增加内存时，会加锁）。同时， =TCMalloc= 维护了进程级别的 =cache= ，
+所有的大对象都在这个 =cache= 中分配，由于多个线程的大对象的分配都从这个 =cache= 进行，所以必须加锁访问。在实际的程序中，小对象分配的频率要远远高于大对象，通过这种方式（小对象无锁分配，大对象加锁分配）可以提
+升整体性能。
+
+  [[./tc.jpg]]
+
+  在 =Golang= 中的内存分配器构造了以下几个数据结构：
+    - =fixalloc=: a free-list allocator for fixed-size off-heap objects,the malloc heap, managed at page (8192-byte) granularity.
+    - =mheap=: the malloc heap, managed at page (8192-byte) granularity.
+    - =mspan=: a run of pages managed by the mheap.
+    - =mcentral=: collects all spans of a given size class.
+    - =mcache=: a per-P cache of mspans with free space.
+    - =mstats=: allocation statistics.
 
 * Golang 的 GC
   =Golang= 的 =GC= 的算法大概有这么几个阶段吧：
     - v1.1 版本的 =Mark&Sweep= ，这个算法最大的问题就在于 =STW= (=Stop The World=)。
     - v1.3 版本的 =Mark STW=, =Sweep= 并行。
     - v1.5 版本的三色标记法。
-    - v1.8 =hybrid write barrier= 。
-    - v1.9 =goroutine= 级别的 =GC= 。
-    
+    - v1.9 =hybrid write barrier= 。
+  
+  三色的定义：
+  - 黑色： 对象在这次 =GC= 中已标记，且这个对象包含的子对象也已标记。
+  - 灰色： 对象在这次 =GC= 中已标记，但这个对象包含的子对象未标记。
+  - 白色： 对象在这次 =GC= 中未标记。
+
+ =Golang= 的 =GC= 是并行 =GC= ，即 =GC= 的大部分处理与普通 =Golang= 代码同时运行。其工作流程大致如下：
+ - Sweep Termination: 对未清扫的 span 进行清扫, 只有上一轮的 GC 的清扫工作完成才可以开始新一轮的 GC
+ - Mark: 扫描所有根对象, 和根对象可以到达的所有对象, 标记它们不被回收
+ - Mark Termination: 完成标记工作, 重新扫描部分根对象(要求 STW)
+ - Sweep: 按标记结果清扫 span
+
 * 参考文档
   #+BEGIN_QUOTE
   [[http://goog-perftools.sourceforge.net/doc/tcmalloc.html][Thread-Caching Malloc]]
