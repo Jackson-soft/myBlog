@@ -1,0 +1,86 @@
+#+TITLE: supervisor 管理进程
+
+* daemon 的概念
+  在多工电脑操作系统中，守护进程（英语：daemon，/ˈdiːmən/或/ˈdeɪmən/）是一种在后台执行的电脑程序。此类程序会被以进程的形式初始化。守护进程程序的名称通常以字母“d”结尾：例如， =syslogd=  就是指
+管理系统日志的守护进程。通常，守护进程没有任何存在的父进程（即 PPID=1），且在 UNIX 系统进程层级中直接位于 init 之下。守护进程程序通常通过如下方法使自己成为守护进程：对一个子进程执行  =fork= ，然
+后使其父进程立即终止，使得这个子进程能在 init 下运行。这种方法通常被称为“脱壳”。
+
+  说直白点就是守护进程(daemon）就是一直在后台运行的进程,它没有控制终端，无法和前台的用户交互。当我们打开一个终端时会创建一个 =session= 会话(shell),从用户登录开始到用户退出为止，这段时间内在该终端
+执行的进程都属于这一个会话。一个会话一般包含一个前台进程组、一个后台进程组和一个会话首进程(shell 程序本身)。
+
+* Go 语言如何实现守护进程
+  目前 Go 程序还不能完全实现 daemon,因为 =Go= 程序在启动时 runtime 可能会创建多个线程(用于内存管理，垃圾回收， =goroutine= 管理等),而 =fork= 与多线程环境并不能和谐共存。
+
+* 使用 Supervisord
+** 安装
+   这里是以 =Centos= 系统为例。（注意 =Supervisor= 目前不支持 =Windows= 系统）
+   - Python 包管理：pip install supervisor
+   - 系统安装：sudo yum install supervisor
+
+   这两种方式都是可以的，但推荐系统安装。
+
+** 配置
+   首先运行 =echo_supervisord_conf > /etc/supervisord.conf= 将默认配置重定向到另外的文件中，不同的进程运用不同的配置文件去对默认文件进行复写即可。
+
+   在写配置的时候我们一般是通过 =include= 的方式把不同的程序写到不同的配置文件中，这需要我们把主配置文件 =/etc/supervisord.conf= 最后的 =include= 配置项打开：
+
+   #+BEGIN_SRC conf
+   [include]
+   files = /etc/supervisor/*.conf
+   #+END_SRC
+
+   这里在主配置文件中有几处需要修改的地方需要注意：
+
+   #+BEGIN_SRC conf
+   [unix_http_server]
+   ;file=/tmp/supervisor.sock   ; (the path to the socket file)
+   ;建议修改为 /var/run 目录，避免被系统删除
+   file=/var/run/supervisor.sock
+
+   [supervisord]
+   ;logfile=/tmp/supervisord.log ; 日志文件(main log file;default $CWD/supervisord.log)
+   ;建议修改为 /var/log 目录，避免被系统删除
+   logfile=/var/log/supervisor/supervisord.log
+   ;pidfile=/tmp/supervisord.pid ; (supervisord pidfile;default supervisord.pid)
+   ;建议修改为 /var/run 目录，避免被系统删除
+   pidfile=/var/run/supervisord.pid ; (supervisord pidfile;default supervisord.pid)
+
+   [supervisorctl]
+   ; 必须和'unix_http_server'里面的设定匹配
+   ;serverurl=unix:///tmp/supervisor.sock ; use a unix:// URL for a unix socket
+   ;建议修改为 /var/run 目录，避免被系统删除
+   serverurl=unix:///var/run/supervisor.sock ; use a unix:// URL for a unix socket
+
+   [include]
+   files = /etc/supervisor/*.conf
+
+   #+END_SRC
+
+   然后是 =/etc/supervisor/xxxx.conf= 自己的程序配置：
+
+   #+BEGIN_SRC conf
+   [program:cashmonitor] ;项目名称
+   directory=/opt/app/golang ; 程序的启动目录
+   command=/opt/app/golang/statStorage ; 启动命令，与手动在命令行启动的命令是一样
+   priority=999                ; the relative start priority (default 999)
+   autostart=true              ; start at supervisord start (default: true) ; 在 supervisord 启动的时候也自动启动
+   autorestart=true            ; retstart at unexpected quit (default: true) ; 程序异常退出后自动重启
+   startsecs=10                ; number of secs prog must stay running (def. 10) ; 启动 10 秒后没有异常退出，就当作已经正常启动了
+   startretries=3              ; max # of serial start failures (default 3) ; 启动失败自动重试次数，默认是 3
+   exitcodes=0,2               ; 'expected' exit codes for process (default 0,2)
+   stopsignal=QUIT             ; signal used to kill process (default TERM)
+   stopwaitsecs=10             ; max num secs to wait before SIGKILL (default 10)
+   user=nobody                 ; setuid to this UNIX account to run the program ; 用哪个用户启动
+   log_stdout=true             ; if true, log program stdout (default true)
+   log_stderr=true             ; if true, log program stderr (def false)
+   ;logfile=/var/log/cashmonitor.log    ; child log path, use NONE for none; default AUTO
+   logfile_maxbytes=100MB        ; max # logfile bytes b4 rotation (default 50MB)
+   logfile_backups=10          ; # of logfile backups (default 10)
+
+   #+END_SRC
+
+** 运行
+   supervisord -c /etc/supervisord.conf
+
+** 查看运行状态
+   supervisorctl status
