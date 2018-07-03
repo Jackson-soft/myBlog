@@ -40,13 +40,10 @@ exclude rsc.io/sampler v1.99.99
 
 + 替换依赖版本， /go.mod/ 文件示例：
   * 替换成本地版本
-
 #+BEGIN_EXAMPLE
 replace rsc.io/quote v1.5.2 => ../quote
 #+END_EXAMPLE
-
   * 替换成其他版本
-
 #+BEGIN_EXAMPLE
 replace "rsc.io/quote" v1.5.2 => "github.com/you/quote" v0.0.0-myfork
 #+END_EXAMPLE
