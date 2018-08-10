@@ -1,0 +1,109 @@
+#+TITLE: Go 的性能调试 pprof
+
+* 什么是 Profiling?
+  在计算机性能调试领域里， /profiling/  就是对应用的画像，这里画像就是应用使用 /CPU/ 和内存的情况。也就是说应用使用了多少 /CPU/ 资源？都是哪些部分在使用？每个函数使用的比例是多少？有哪些函数在
+等待 /CPU/ 资源？知道了这些，我们就能对应用进行规划，也能快速定位性能瓶颈。
+
+  在 /go/ 语言中，主要关注的应用运行情况主要包括以下几种：
+  - CPU :: 程序的 /CPU/ 的使用情况。
+  - Memory :: 程序的内存使用情况。
+  - Block :: 报告 /goroutines/ 不在运行状态时的情况，可以用来分析和查找死锁等性能瓶颈。
+  - Goroutines :: 报告 /goroutines/ 在使用情况，有哪些 /goroutines/ ，它们的调用关系是怎样的。
+
+* 数据收集
+** 工具型程序
+   如果你的程序是运行一段时间就结束。那么你要自己手动来收集数据信息。首先要引用包：
+
+#+BEGIN_SRC go
+import "runtime/pprof"
+#+END_SRC
+
+然后在 /main/ 函数中添加：
+
+#+BEGIN_SRC go
+var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to `file`")
+var memprofile = flag.String("memprofile", "", "write memory profile to `file`")
+
+func main() {
+	flag.Parse()
+	if *cpuprofile != "" {
+		f, err := os.Create(*cpuprofile)
+		if err != nil {
+			log.Fatal("could not create CPU profile: ", err)
+		}
+		if err := pprof.StartCPUProfile(f); err != nil {
+			log.Fatal("could not start CPU profile: ", err)
+		}
+		defer pprof.StopCPUProfile()
+	}
+
+	// ... rest of the program ...
+
+	if *memprofile != "" {
+		f, err := os.Create(*memprofile)
+		if err != nil {
+			log.Fatal("could not create memory profile: ", err)
+		}
+		runtime.GC() // get up-to-date statistics
+		if err := pprof.WriteHeapProfile(f); err != nil {
+			log.Fatal("could not write memory profile: ", err)
+		}
+		f.Close()
+	}
+}
+#+END_SRC
+
+** 服务型程序
+   如果你的程序是一个持续运行的服务，可以在程序中添加如下代码：
+
+#+BEGIN_SRC go
+import _ "net/http/pprof"
+#+END_SRC
+
+然后在 /main/ 函数中添加：
+
+#+BEGIN_SRC go
+go func() {
+	log.Println(http.ListenAndServe(":6060", nil))
+}()
+#+END_SRC
+
+这样你的程序就集成了一个标准的 /HTTP/ 服务器。可以在浏览器中使用 =http://localhost:6060/debug/pprof= 链接来查看当前服务的信息。
+
+另外一种文件是使用 /go tool pprof/ 命令把数据收集下来，生成火焰图查看。
+
+/pprof/ 的命令格式： =pprof <format> [options] [binary] <source> ...= 。 =<format>= 是输出格式， =[binary]= 是程序的二进制文件， =[source]= 是 /profile/ 的数据来源。
+
+收集 30 秒 /CPU/ 信息：
+
+#+BEGIN_SRC shell
+go tool pprof http://localhost:6060/debug/pprof/profile
+#+END_SRC
+
+收集堆信息：
+
+#+BEGIN_SRC shell
+go tool pprof http://localhost:6060/debug/pprof/heap
+#+END_SRC
+
+/goroutine/ 阻塞信息：
+
+#+BEGIN_SRC shell
+go tool pprof http://localhost:6060/debug/pprof/block
+#+END_SRC
+
+查看锁的持有情况：
+
+#+BEGIN_SRC shell
+go tool pprof http://localhost:6060/debug/pprof/mutex
+#+END_SRC
+
+收集时间默认是 30 秒，结束后会在当前目录下生成 =.pb.gz= 为后缀的数据文件。
+
+* 界面展示
+  /pprof/ 一般是搭配火焰图来分析问题的。如果你使用的 /Go/ 版本是在 =1.10= 之前的话，可以用 /Uber/ 的开源工具[[https://github.com/uber/go-torch][go-torch]]来生成火焰图。如果是是 =1.10= 及以后版本，/Go/ 的官方 /pprof/ 已支持
+/web/ 方式来浏览。命令如下：
+=go tool pprof -http=127.0.0.1:8089 profile.pb.gz=
+命令会自动打开默认浏览器展示 /web UI/。
+
+[[./pprof_web_ui.png]]
