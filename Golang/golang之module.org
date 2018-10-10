@@ -1,0 +1,70 @@
+#+TITLE: Go的版本管理module
+
+** 简介
+[[https://research.swtch.com/vgo][vgo]]是由[[https://swtch.com/~rsc/][Russ Cox]]提出的版本化 *go* 包管理工具，用以替换现在的官方包管理工具[[https://golang.github.io/dep/][dep]]。
+
+需要注意的是： /vgo/ 只能运行在 /go1.10/ 之上，否则会得到 /vgo objabi: cannot find GOMIPS/ 这样的错误。
+
+而在 /go1.11/ 之后 /vgo/ 正式转正成为官方版本管理工具 /module/ 。
+
+** 基本用法
+
++ 使用命令 /go mod init/ 来创建一个空的 /go.mod/ 文件。
++ 然后使用 /go build/ 命令编译项目。在这个编译的过程，会往 /go.mod/ 文件中写入项目的依赖等相关信息。大概像下面这样:
+
+#+BEGIN_EXAMPLE
+module uploadFile
+
+require (
+	github.com/gin-contrib/cors v0.0.0-20180514151808-6f0a820f94be
+	github.com/gin-gonic/gin v1.1.4
+)
+#+END_EXAMPLE
+
+其中 /module/ 就是你的项目名称。
+
+/require/ 就是你的项目依赖。其格式是 /xxx/ 包的 /vx.x.x/ 版本。如果依赖包没有提供 /tag/ 版本，则会使用 /master/ 的最后一次提交来命名，其格式是 /v0.0.0-yyyymmddhhmmss-commit/ 。
+
++ 添加及下载项目依赖
+  * /go list -m rsc.io/sampler/ 命令来查看依赖的 /tag/ 版本列表。
+  * /go get rsc.io/sampler@v1.3.1/ 用来下载并在 /go.mod/ 文件中添加依赖。如果依赖没有 /tag/ 版本则可以在 /@/后跟 /master/ 来下载 /master/ 分支。
+  * /go get -u/ 用来升级依赖包版本。
+
++ 排除版本， /go.mod/ 文件示例：
+
+#+BEGIN_EXAMPLE
+exclude rsc.io/sampler v1.99.99
+#+END_EXAMPLE
+
++ 替换依赖版本， /go.mod/ 文件示例：
+
+    - 替换成本地版本
+#+BEGIN_EXAMPLE
+replace rsc.io/quote v1.5.2 => ../quote
+#+END_EXAMPLE
+
+    - 替换成其他版本
+#+BEGIN_EXAMPLE
+replace "rsc.io/quote" v1.5.2 => "github.com/you/quote" v0.0.0-myfork
+#+END_EXAMPLE
+
+用 /go list -m/ 命令可以看到如下显示：
+
+#+BEGIN_EXAMPLE
+MODULE                VERSION
+github.com/you/hello  -
+golang.org/x/text     v0.3.0
+rsc.io/quote          v1.5.2
+ => ../quote
+rsc.io/sampler        v1.3.1
+#+END_EXAMPLE
+
++ 兼容 /vendor/ 目录
+如果想兼容原有的包管理目录 /vendor/ 的话，可以在项目目录下执行 /go mod vendor/ 来把项目依赖放到 /vendor/ 目录下。
+编译的时候使用命令 /go build -mod vendor/ 就可以了。
+
++ 更新依赖关系
+可以使用命令 /go mod tidy/ 用来为 /go.mod/ 增加丢失的依赖，删除不需要的依赖。
+
+** 参考文档
++ [[https://research.swtch.com/vgo][Go & Versioning]]
