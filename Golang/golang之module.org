@@ -36,8 +36,7 @@ require (
 exclude rsc.io/sampler v1.99.99
 #+END_EXAMPLE
 
-+ 替换依赖版本， /go.mod/ 文件示例：
-
++ 替换依赖版本， /go.mod/ 文件示例:
     - 替换成本地版本
 #+BEGIN_EXAMPLE
 replace rsc.io/quote v1.5.2 => ../quote
@@ -45,18 +44,14 @@ replace rsc.io/quote v1.5.2 => ../quote
 
     - 替换成其他版本
 #+BEGIN_EXAMPLE
-replace "rsc.io/quote" v1.5.2 => "github.com/you/quote" v0.0.0-myfork
+replace google.golang.org/appengine v1.1.0 => github.com/golang/appengine v1.1.0
 #+END_EXAMPLE
 
-用 /go list -m/ 命令可以看到如下显示：
+用 /go list -m all/ 命令可以看到如下显示：
 
 #+BEGIN_EXAMPLE
-MODULE                VERSION
-github.com/you/hello  -
-golang.org/x/text     v0.3.0
-rsc.io/quote          v1.5.2
- => ../quote
-rsc.io/sampler        v1.3.1
+rsc.io/quote v1.5.2 => ../quote
+google.golang.org/appengine v1.1.0 => github.com/golang/appengine v1.1.0
 #+END_EXAMPLE
 
 + 兼容 /vendor/ 目录
@@ -67,4 +62,4 @@ rsc.io/sampler        v1.3.1
 可以使用命令 /go mod tidy/ 用来为 /go.mod/ 增加丢失的依赖，删除不需要的依赖。
 
 ** 参考文档
-+ [[https://research.swtch.com/vgo][Go & Versioning]]
+   [[https://github.com/golang/go/wiki/Modules][Modules]]
