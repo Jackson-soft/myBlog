@@ -1,7 +1,8 @@
 #+TITLE: Go的内存分配
 
 ** 说明
-内存分配与 /GC/ （垃圾回收）关系密切，所以了解 /GC/ 前有必要了解内存分配的原理。
+/Go/ 语言内存管理子系统主要由两部分组成：内存分配器和垃圾回收器（ /GC/ ）。内存分配器主要解决对象的分配管理和多线程的内存分配问题。优良的
+内存管理就是为了提升内存分配释放的速度以及避免内存碎片等问题。作为了解 /Go/ 的垃圾回收器的前奏，我们需要对内存分配做一点点了解。
 ** 内存对齐
 *** 概念
 计算机中内存大小的基本单位是字节（byte），理论上来讲，可以从任意地址访问某种基本数据类型，但是实际上，计算机并非逐字节大小读写内存，而是以2,4,或8的倍数的字节块来读写内存，
@@ -13,7 +14,6 @@
 64位 /CPU/ 的一次读取，所以出于性能考虑编译器一般会默认以 /CPU/ 的位数作为内存对齐标准。）
 
 *** 合理的字段顺序可以减少内存的开销
-
 内存对齐会影响 /struct/ 的内存占用大小。
 
 内存对齐的规则：
@@ -21,7 +21,123 @@
 我的电脑默认是8，所以最大值不会超过8.
 + struct在每个字段都内存对齐之后，其本身也要进行对齐，对齐值=min(默认对齐值，字段最大类型长度)。这条也很好理解，struct的所有字段中，最大的那个类
 型的长度以及默认对齐值之间，取最小的那个。
-** 架构
+** TCMalloc
+*** 简介
+/TCMalloc/ 的全称叫 /Thread-Caching Malloc/ 。从名称上就可以很直观的看出这货是生而为多线程内存分配而设计的。
 
+/TCMalloc/ 的架构减少了多线程程序的锁争用。对于小型对象，几乎没有争用;对于大型对象， /TCMalloc/ 尝试使用细粒度和高效的自旋锁。下面从 /Go/ 内置的 /TCMalloc/ 来说明一下。
+*** 架构
+在 /TCMalloc/ 中，<=32KB的对象被称作是小对象，>32KB的是大对象。在小对象中，<=1024bytes的对象以8n bytes分配，1025 < size <= 32KB的对象以128n bytes大小分配，
+比如：要分配20bytes则返回的空闲块大小是24bytes的，这样在<=1024的情况下最多浪费7bytes，>1025则浪费127bytes。而大对象是以页大小4KB进行对齐的，最多会浪费4KB - 1 bytes。
 
-** 接口
+每个线程都一个线程局部的 /ThreadCache/ ，按照不同的规格，维护了对象的链表；如果 /ThreadCache/ 的对象不够了，就从 /CentralCache/ 进行批量分配；如果 /CentralCache/
+依然没有，就从 /PageHeap/ 申请 /Span/ ；如果 /PageHeap/ 没有合适的 /Page/ ，就只能从操作系统申请了。
+
+在释放内存的时候，/ThreadCache/ 依然遵循批量释放的策略，对象积累到一定程度就释放给 /CentralCache/ ；/CentralCache/ 发现一个 /Span/ 的内存完全释放了，就可以把这
+个 /Span/ 归还给 /PageHeap/ ；/PageHeap/ 发现一批连续的 /Page/ 都释放了，就可以归还给操作系统。
+
+一图胜所有：
+
+** /Go/ 内存分配
+*** 概念
+在此之前，我们先了解下几个 /Go/ 内存分配相关的概念：
+
++ fixalloc :: a free-list allocator for fixed-size off-heap objects,used to manage storage used by the allocator.
++ mheap :: the malloc heap, managed at page (8192-byte) granularity.
++ mspan :: a run of pages managed by the mheap.
++ mcentral :: collects all spans of a given size class.
++ mcache :: a per-P cache of mspans with free space.
++ mstats :: allocation statistics.
+
+*** 起手
+在 /C/C++/ 中我们都知道程序的起点都是 /main/ 函数。而 /main/ 函数一般都长这样：
+#+BEGIN_SRC c++
+  int main(int argc, char *argv[])
+  {
+	/*
+	 * do something
+	 */
+	return 0;
+  }
+#+END_SRC
+在 /Go/ 里我们也有一个起点 /main/ 函数叫 /main.main/ 函数 。但这货并不是真正意义上的程序的起点，在64位 /Mac OS/ 机器上的程序起点是
+在 /runtime/rt0_darwin_amd64.s/ 的这段代码：
+#+BEGIN_SRC c++
+TEXT _rt0_amd64_darwin(SB),NOSPLIT,$-8
+	JMP	_rt0_amd64(SB)
+#+END_SRC
+然后跳转到 /runtime/asm_amd64.s/ 文件中的这段代码：
+#+BEGIN_SRC c++
+// _rt0_amd64 is common startup code for most amd64 systems when using
+// internal linking. This is the entry point for the program from the
+// kernel for an ordinary -buildmode=exe program. The stack holds the
+// number of arguments and the C-style argv.
+TEXT _rt0_amd64(SB),NOSPLIT,$-8
+	MOVQ	0(SP), DI	// argc
+	LEAQ	8(SP), SI	// argv
+	JMP	runtime·rt0_go(SB)
+#+END_SRC
+从这段汇编代码中我们可以完整的找到 /C/ 语言 /main/ 函数的样子。然后在 /runtime·rt0_go/ 函数中进行程序运行前的准备工作（包括但不限于平台初始化、 /CPU/ 相关初始化、栈
+初始化、内存分配器初始化、 /M/ 初始化、 /GC/ 初始化、 /P/ 初始化等等一系列的工作）。
+
+然后调到 /runtime.main/ 函数，最后调到我们自己写的 /main.main/ 函数，程序开始运行。
+*** 施法前摇
+内存分配相关的初始化工作是在 /runtime.proc.go/ 文件中的 /schedinit()/ 函数中。这个函数有点长，我们主要看内存相关的代码：
+#+BEGIN_SRC go
+  func schedinit() {
+	  // raceinit must be the first call to race detector.
+	  // In particular, it must be done before mallocinit below calls racemapshadow.
+	  _g_ := getg()
+	  if raceenabled {
+		  _g_.racectx, raceprocctx0 = raceinit()
+	  }
+
+	  sched.maxmcount = 10000
+
+	  tracebackinit()
+	  moduledataverify()
+
+	  /*************/
+	  stackinit() // 栈初始化。
+	  mallocinit() // 内存分配器初始化
+	  mcommoninit(_g_.m) // 初始化当前 M
+	  /*************/
+
+	  cpuinit()       // must run before alginit
+	  alginit()       // maps must not be used before this call
+	  modulesinit()   // provides activeModules
+	  typelinksinit() // uses maps, activeModules
+	  itabsinit()     // uses activeModules
+
+	  msigsave(_g_.m)
+	  initSigmask = _g_.m.sigmask
+
+	  goargs()
+	  goenvs()
+	  parsedebugvars()
+
+	  gcinit() // 垃圾回收器初始化
+
+	  sched.lastpoll = uint64(nanotime())
+
+	  // 通过 CPU 核心数和 GOMAXPROCS 环境变量确定 P 的数量
+	  procs := ncpu
+	  if n, ok := atoi32(gogetenv("GOMAXPROCS")); ok && n > 0 {
+		  procs = n
+	  }
+
+	  // 调整 P 的数量
+	  if procresize(procs) != nil {
+		  throw("unknown runnable goroutine during bootstrap")
+	  }
+
+	  /*
+		....
+		,*/
+  }
+#+END_SRC
+
+*** 施法
+** 参考文档
++ [[http://goog-perftools.sourceforge.net/doc/tcmalloc.html][TCMalloc]]
++ [[https://baike.baidu.com/item/%E5%86%85%E5%AD%98%E5%AF%B9%E9%BD%90][内存对齐]]
