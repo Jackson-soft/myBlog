@@ -25,119 +25,414 @@
 *** 简介
 /TCMalloc/ 的全称叫 /Thread-Caching Malloc/ 。从名称上就可以很直观的看出这货是生而为多线程内存分配而设计的。
 
-/TCMalloc/ 的架构减少了多线程程序的锁争用。对于小型对象，几乎没有争用;对于大型对象， /TCMalloc/ 尝试使用细粒度和高效的自旋锁。下面从 /Go/ 内置的 /TCMalloc/ 来说明一下。
+/TCMalloc/ 的架构减少了多线程程序的锁争用。对于小型对象，几乎没有争用;对于大型对象， /TCMalloc/ 尝试使用细粒度和高效的自旋锁。
 *** 架构
-在 /TCMalloc/ 中，<=32KB的对象被称作是小对象，>32KB的是大对象。在小对象中，<=1024bytes的对象以8n bytes分配，1025 < size <= 32KB的对象以128n bytes大小分配，
-比如：要分配20bytes则返回的空闲块大小是24bytes的，这样在<=1024的情况下最多浪费7bytes，>1025则浪费127bytes。而大对象是以页大小4KB进行对齐的，最多会浪费4KB - 1 bytes。
+在 /TCMalloc/ 中，<= 32KB的对象被称作是小对象，> 32KB的是大对象。在小对象中，<= 1024bytes的对象以8n bytes分配，1025 < size <= 32KB的对象以128n bytes大小分配，
+比如：要分配20bytes则返回的空闲块大小是24bytes的，这样在 <= 1024的情况下最多浪费7bytes，> 1025则浪费127bytes。而大对象是以页大小4KB进行对齐的，最多会浪费4KB - 1 bytes。
 
-每个线程都一个线程局部的 /ThreadCache/ ，按照不同的规格，维护了对象的链表；如果 /ThreadCache/ 的对象不够了，就从 /CentralCache/ 进行批量分配；如果 /CentralCache/
-依然没有，就从 /PageHeap/ 申请 /Span/ ；如果 /PageHeap/ 没有合适的 /Page/ ，就只能从操作系统申请了。
+在 /TCMalloc/ 内存管理的体系之中，一共有三个层次： /ThreadCache/ 、 /CentralCache/ 、 /PageHeap/ 。
+分配内存和释放内存的时候都是按从前到后的顺序，在各个层次中去进行尝试。基本思想是：前面的层次分配内存失败，则从下一层分配一批补充上来；前面的层次释放了过多的内存，则
+回收一批到下一层次。
 
-在释放内存的时候，/ThreadCache/ 依然遵循批量释放的策略，对象积累到一定程度就释放给 /CentralCache/ ；/CentralCache/ 发现一个 /Span/ 的内存完全释放了，就可以把这
-个 /Span/ 归还给 /PageHeap/ ；/PageHeap/ 发现一批连续的 /Page/ 都释放了，就可以归还给操作系统。
-
-一图胜所有：
+/ThreadCache/ : 顾名思义，是每个线程一份的，主要用于分配小对象（<= 32K）。理想情况下，每个线程的内存需求都在自己的 /ThreadCache/ 里面完成，线程之间不需要竞争，非常高效。
+而 /CentralCache/ 和 /PageHeap/ 则是全局的；
+/CentralCache/ : 中心 /free list/ ， 用于按页对齐分配大对象或者是将连续的多个页（被称作 /span/ ）分割成多个小对象的空闲块分配给 /ThreadCache/ 。
+/PageHeap/ : 用于描述当前 /TCMalloc/ 持有的内存状态，完成的是从 /page number/ 到 /span/ 的映射。
+内存分配粒度: 在 /TCMalloc/ 里面，有两种粒度的内存， /object/ 和 /span/ 。 /span/ 是连续 /page/ 的内存，而 /object/ 则是由 /span/ 切成的小块。
+/object/ 的尺寸被预设了一些规格（ /class/ ），比如16字节、32字节、等等，同一个 /span/ 切出来的 /object/ 都是相同的规格。 /object/ 不大于256K，超大的内存将直接
+分配 /span/ 来使用。 /ThreadCache/ 和 /CentralCache/ 都是管理 /object/ ，而 /PageHeap/ 管理的是 /span/ 。
 
 ** /Go/ 内存分配
 *** 概念
 在此之前，我们先了解下几个 /Go/ 内存分配相关的概念：
-
 + fixalloc :: a free-list allocator for fixed-size off-heap objects,used to manage storage used by the allocator.
-+ mheap :: the malloc heap, managed at page (8192-byte) granularity.
++ mheap :: the malloc heap, managed at page (8192-byte) granularity. 当 /mcentral/ 也不够用的时候，通过 /mheap/ 向操作系统申请。
 + mspan :: a run of pages managed by the mheap.
-+ mcentral :: collects all spans of a given size class.
-+ mcache :: a per-P cache of mspans with free space.
-+ mstats :: allocation statistics.
-
-*** 起手
-在 /C/C++/ 中我们都知道程序的起点都是 /main/ 函数。而 /main/ 函数一般都长这样：
-#+BEGIN_SRC c++
-  int main(int argc, char *argv[])
-  {
-	/*
-	 * do something
-	 */
-	return 0;
-  }
-#+END_SRC
-在 /Go/ 里我们也有一个起点 /main/ 函数叫 /main.main/ 函数 。但这货并不是真正意义上的程序的起点，在64位 /Mac OS/ 机器上的程序起点是
-在 /runtime/rt0_darwin_amd64.s/ 的这段代码：
-#+BEGIN_SRC c++
-TEXT _rt0_amd64_darwin(SB),NOSPLIT,$-8
-	JMP	_rt0_amd64(SB)
-#+END_SRC
-然后跳转到 /runtime/asm_amd64.s/ 文件中的这段代码：
-#+BEGIN_SRC c++
-// _rt0_amd64 is common startup code for most amd64 systems when using
-// internal linking. This is the entry point for the program from the
-// kernel for an ordinary -buildmode=exe program. The stack holds the
-// number of arguments and the C-style argv.
-TEXT _rt0_amd64(SB),NOSPLIT,$-8
-	MOVQ	0(SP), DI	// argc
-	LEAQ	8(SP), SI	// argv
-	JMP	runtime·rt0_go(SB)
-#+END_SRC
-从这段汇编代码中我们可以完整的找到 /C/ 语言 /main/ 函数的样子。然后在 /runtime·rt0_go/ 函数中进行程序运行前的准备工作（包括但不限于平台初始化、 /CPU/ 相关初始化、栈
-初始化、内存分配器初始化、 /M/ 初始化、 /GC/ 初始化、 /P/ 初始化等等一系列的工作）。
-
-然后调到 /runtime.main/ 函数，最后调到我们自己写的 /main.main/ 函数，程序开始运行。
-*** 施法前摇
-内存分配相关的初始化工作是在 /runtime.proc.go/ 文件中的 /schedinit()/ 函数中。这个函数有点长，我们主要看内存相关的代码：
++ mcentral :: collects all spans of a given size class. 全局 /cache/，/mcache/ 不够用的时候向 /mcentral/ 申请。
++ mcache :: a per-P cache of mspans with free space. P级的局部 /cache/ 。
+*** /fixalloc/
+这个东西是一个固定大小对象的分配器,贯穿整个内存分配过程.
+*** /mspan/
+/span/ 在 /TCMalloc/ 中作为一种管理内存的基本单位而存在。/Go/ 的 /mspan/ 的结构如下，省略了部分内容。
 #+BEGIN_SRC go
-  func schedinit() {
-	  // raceinit must be the first call to race detector.
-	  // In particular, it must be done before mallocinit below calls racemapshadow.
-	  _g_ := getg()
-	  if raceenabled {
-		  _g_.racectx, raceprocctx0 = raceinit()
-	  }
+  type mspan struct {
+      next *mspan     // next span in list, or nil if none
+      prev *mspan     // previous span in list, or nil if none
+      list *mSpanList // For debugging. TODO: Remove.
 
-	  sched.maxmcount = 10000
+      startAddr uintptr // address of first byte of span aka s.base()
+      npages    uintptr // number of pages in span
 
-	  tracebackinit()
-	  moduledataverify()
+      manualFreeList gclinkptr // list of free objects in _MSpanManual spans
 
-	  /*************/
-	  stackinit() // 栈初始化。
-	  mallocinit() // 内存分配器初始化
-	  mcommoninit(_g_.m) // 初始化当前 M
-	  /*************/
+      freeindex uintptr
+	  nelems uintptr // number of object in the span.
 
-	  cpuinit()       // must run before alginit
-	  alginit()       // maps must not be used before this call
-	  modulesinit()   // provides activeModules
-	  typelinksinit() // uses maps, activeModules
-	  itabsinit()     // uses activeModules
-
-	  msigsave(_g_.m)
-	  initSigmask = _g_.m.sigmask
-
-	  goargs()
-	  goenvs()
-	  parsedebugvars()
-
-	  gcinit() // 垃圾回收器初始化
-
-	  sched.lastpoll = uint64(nanotime())
-
-	  // 通过 CPU 核心数和 GOMAXPROCS 环境变量确定 P 的数量
-	  procs := ncpu
-	  if n, ok := atoi32(gogetenv("GOMAXPROCS")); ok && n > 0 {
-		  procs = n
-	  }
-
-	  // 调整 P 的数量
-	  if procresize(procs) != nil {
-		  throw("unknown runnable goroutine during bootstrap")
-	  }
-
-	  /*
-		....
-		,*/
+     //...
   }
 #+END_SRC
+ 这里用链表来做内存管理基本单位，一方面是插入跟删除的快捷方便，另一方面就是链表可以最大化把零散内存利用起来。
+*** /mcache/
+作为 /Go/ 中 /P/ 级局部 /cache/ ，其实是 /TCMalloc/ 原生架构中的 /ThreadCache/ 。所以某一个正在 /P/ 中执行的 /G/ 的内存分配都独占这个 /cache/ 且不需加锁。
+而 /cache/ 是从 /heap/ 中分配的.初始化过程如下:
+#+BEGIN_SRC go
+func mallocinit() {
+    // Initialize the heap.
+	mheap_.init()
+	_g_ := getg()
+	_g_.m.mcache = allocmcache()
+}
+#+END_SRC
 
-*** 施法
+#+BEGIN_SRC go
+func allocmcache() *mcache {
+	lock(&mheap_.lock)
+	c := (*mcache)(mheap_.cachealloc.alloc())
+	unlock(&mheap_.lock)
+	for i := range c.alloc {
+		c.alloc[i] = &emptymspan
+	}
+	c.next_sample = nextSample()
+	return c
+}
+#+END_SRC
+从代码中可以看到 /cache/ 是从 /mheap/ 中分配,而且是有锁的.那么 /mcentral/  在哪呢?
+
+*** /mcentral/
+/Go/ 程序是以单进程多线程方式运行的。这个 /mcentral/ 对应的是 /CentralCache/ 进程级 /cache/ 。
+#+BEGIN_SRC go
+type mcentral struct {
+	lock      mutex
+	spanclass spanClass
+	nonempty  mSpanList // list of spans with a free object, ie a nonempty free list
+	empty     mSpanList // list of spans with no free objects (or cached in an mcache)
+
+	// nmalloc is the cumulative count of objects allocated from
+	// this mcentral, assuming all spans in mcaches are
+	// fully-allocated. Written atomically, read under STW.
+	nmalloc uint64
+}
+#+END_SRC
+ /mcentral/ 并没有单独的初始化过程,而是隐藏在全局变量 /mheap_/ 的初始化过程中.
+*** /mheap/
+#+BEGIN_SRC go
+type mheap struct {
+	lock      mutex
+	free      [_MaxMHeapList]mSpanList // free lists of given length up to _MaxMHeapList
+	freelarge mTreap                   // free treap of length >= _MaxMHeapList
+	busy      [_MaxMHeapList]mSpanList // busy lists of large spans of given length
+	busylarge mSpanList                // busy lists of large spans length >= _MaxMHeapList
+	sweepgen  uint32                   // sweep generation, see comment in mspan
+	sweepdone uint32                   // all spans are swept
+	sweepers  uint32                   // number of active sweepone calls
+    allspans []*mspan // all spans out there
+
+	arenas [1 << arenaL1Bits]*[1 << arenaL2Bits]*heapArena
+
+	arenaHints *arenaHint     // 堆空间
+    // .....
+
+	//_ uint32 // ensure 64-bit alignment of central
+
+	// central free lists for small size classes.
+	// the padding makes sure that the MCentrals are
+	// spaced CacheLineSize bytes apart, so that each MCentral.lock
+	// gets its own cache line.
+	// central is indexed by spanClass.
+	central [numSpanClasses]struct {
+		mcentral mcentral
+		pad      [sys.CacheLineSize - unsafe.Sizeof(mcentral{})%sys.CacheLineSize]byte
+	}
+
+	spanalloc             fixalloc // allocator for span*
+	cachealloc            fixalloc // allocator for mcache*
+	treapalloc            fixalloc // allocator for treapNodes* used by large objects
+	specialfinalizeralloc fixalloc // allocator for specialfinalizer*
+	specialprofilealloc   fixalloc // allocator for specialprofile*
+	speciallock           mutex    // lock for special record allocators.
+	arenaHintAlloc        fixalloc // allocator for arenaHints
+
+	unused *specialfinalizer // never set, just here to force the specialfinalizer type into DWARF
+}
+#+END_SRC
+结构中的 /central/ 就是前面我们说的 /mcentral/ .
+/mheap_/ 是一个全局变量，会在系统初始化的时候初始化（在函数 mallocinit() 中.
+初始化代码如下:
+#+BEGIN_SRC go
+// Initialize the heap.
+func (h *mheap) init() {
+	h.treapalloc.init(unsafe.Sizeof(treapNode{}), nil, nil, &memstats.other_sys)
+	h.spanalloc.init(unsafe.Sizeof(mspan{}), recordspan, unsafe.Pointer(h), &memstats.mspan_sys)
+	h.cachealloc.init(unsafe.Sizeof(mcache{}), nil, nil, &memstats.mcache_sys)
+	h.specialfinalizeralloc.init(unsafe.Sizeof(specialfinalizer{}), nil, nil, &memstats.other_sys)
+	h.specialprofilealloc.init(unsafe.Sizeof(specialprofile{}), nil, nil, &memstats.other_sys)
+	h.arenaHintAlloc.init(unsafe.Sizeof(arenaHint{}), nil, nil, &memstats.other_sys)
+
+	// Don't zero mspan allocations. Background sweeping can
+	// inspect a span concurrently with allocating it, so it's
+	// important that the span's sweepgen survive across freeing
+	// and re-allocating a span to prevent background sweeping
+	// from improperly cas'ing it from 0.
+	//
+	// This is safe because mspan contains no heap pointers.
+	h.spanalloc.zero = false
+
+	// h->mapcache needs no init
+	for i := range h.free {
+		h.free[i].init()
+		h.busy[i].init()
+	}
+
+	h.busylarge.init()
+	for i := range h.central {
+		h.central[i].mcentral.init(spanClass(i))
+	}
+}
+#+END_SRC
+***  内存分配规则
+给对象 /object/ 分配内存的主要流程:
++ /object size/ > 32K，则使用 /mheap/ 直接分配。
++ /object size/ < 16 byte，使用 /mcache/ 的小对象分配器 /tiny/ 直接分配。 （其实 /tiny/ 就是一个指针，暂且这么说吧。）
++ /object size/ > 16 byte && /size/ <=32K byte 时，先使用 /mcache/ 中对应的 /size class/ 分配。
++ 如果 /mcache/ 对应的 /size class/ 的 /span/ 已经没有可用的块，则向 /mcentral/ 请求。
++ 如果 /mcentral/ 也没有可用的块，则向 /mheap/ 申请，并切分。
++ 如果 /mheap/ 也没有合适的 /span/，则想操作系统申请。
+
+分配过程如下:
+#+BEGIN_SRC go
+// Allocate an object of size bytes.
+// Small objects are allocated from the per-P cache's free lists.
+// Large objects (> 32 kB) are allocated straight from the heap.
+func mallocgc(size uintptr, typ *_type, needzero bool) unsafe.Pointer {
+	if gcphase == _GCmarktermination {
+		throw("mallocgc called with gcphase == _GCmarktermination")
+	}
+
+	if size == 0 {
+		return unsafe.Pointer(&zerobase)
+	}
+
+	if debug.sbrk != 0 {
+		align := uintptr(16)
+		if typ != nil {
+			align = uintptr(typ.align)
+		}
+		return persistentalloc(size, align, &memstats.other_sys)
+	}
+
+	// assistG is the G to charge for this allocation, or nil if
+	// GC is not currently active.
+	var assistG *g
+	if gcBlackenEnabled != 0 {
+		// Charge the current user G for this allocation.
+		assistG = getg()
+		if assistG.m.curg != nil {
+			assistG = assistG.m.curg
+		}
+		// Charge the allocation against the G. We'll account
+		// for internal fragmentation at the end of mallocgc.
+		assistG.gcAssistBytes -= int64(size)
+
+		if assistG.gcAssistBytes < 0 {
+			// This G is in debt. Assist the GC to correct
+			// this before allocating. This must happen
+			// before disabling preemption.
+			gcAssistAlloc(assistG)
+		}
+	}
+
+	// Set mp.mallocing to keep from being preempted by GC.
+	mp := acquirem()
+	if mp.mallocing != 0 {
+		throw("malloc deadlock")
+	}
+	if mp.gsignal == getg() {
+		throw("malloc during signal")
+	}
+	mp.mallocing = 1
+
+	shouldhelpgc := false
+	dataSize := size
+	c := gomcache()
+	var x unsafe.Pointer
+	noscan := typ == nil || typ.kind&kindNoPointers != 0
+	if size <= maxSmallSize {
+		if noscan && size < maxTinySize {
+			// Tiny allocator.
+			//
+			// Tiny allocator combines several tiny allocation requests
+			// into a single memory block. The resulting memory block
+			// is freed when all subobjects are unreachable. The subobjects
+			// must be noscan (don't have pointers), this ensures that
+			// the amount of potentially wasted memory is bounded.
+			//
+			// Size of the memory block used for combining (maxTinySize) is tunable.
+			// Current setting is 16 bytes, which relates to 2x worst case memory
+			// wastage (when all but one subobjects are unreachable).
+			// 8 bytes would result in no wastage at all, but provides less
+			// opportunities for combining.
+			// 32 bytes provides more opportunities for combining,
+			// but can lead to 4x worst case wastage.
+			// The best case winning is 8x regardless of block size.
+			//
+			// Objects obtained from tiny allocator must not be freed explicitly.
+			// So when an object will be freed explicitly, we ensure that
+			// its size >= maxTinySize.
+			//
+			// SetFinalizer has a special case for objects potentially coming
+			// from tiny allocator, it such case it allows to set finalizers
+			// for an inner byte of a memory block.
+			//
+			// The main targets of tiny allocator are small strings and
+			// standalone escaping variables. On a json benchmark
+			// the allocator reduces number of allocations by ~12% and
+			// reduces heap size by ~20%.
+			off := c.tinyoffset
+			// Align tiny pointer for required (conservative) alignment.
+			if size&7 == 0 {
+				off = round(off, 8)
+			} else if size&3 == 0 {
+				off = round(off, 4)
+			} else if size&1 == 0 {
+				off = round(off, 2)
+			}
+			if off+size <= maxTinySize && c.tiny != 0 {
+				// The object fits into existing tiny block.
+				x = unsafe.Pointer(c.tiny + off)
+				c.tinyoffset = off + size
+				c.local_tinyallocs++
+				mp.mallocing = 0
+				releasem(mp)
+				return x
+			}
+			// Allocate a new maxTinySize block.
+			span := c.alloc[tinySpanClass]
+			v := nextFreeFast(span)
+			if v == 0 {
+				v, _, shouldhelpgc = c.nextFree(tinySpanClass)
+			}
+			x = unsafe.Pointer(v)
+			(*[2]uint64)(x)[0] = 0
+			(*[2]uint64)(x)[1] = 0
+			// See if we need to replace the existing tiny block with the new one
+			// based on amount of remaining free space.
+			if size < c.tinyoffset || c.tiny == 0 {
+				c.tiny = uintptr(x)
+				c.tinyoffset = size
+			}
+			size = maxTinySize
+		} else {
+			var sizeclass uint8
+			if size <= smallSizeMax-8 {
+				sizeclass = size_to_class8[(size+smallSizeDiv-1)/smallSizeDiv]
+			} else {
+				sizeclass = size_to_class128[(size-smallSizeMax+largeSizeDiv-1)/largeSizeDiv]
+			}
+			size = uintptr(class_to_size[sizeclass])
+			spc := makeSpanClass(sizeclass, noscan)
+			span := c.alloc[spc]
+			v := nextFreeFast(span)
+			if v == 0 {
+				v, span, shouldhelpgc = c.nextFree(spc)
+			}
+			x = unsafe.Pointer(v)
+			if needzero && span.needzero != 0 {
+				memclrNoHeapPointers(unsafe.Pointer(v), size)
+			}
+		}
+	} else {
+		var s *mspan
+		shouldhelpgc = true
+		systemstack(func() {
+			s = largeAlloc(size, needzero, noscan)
+		})
+		s.freeindex = 1
+		s.allocCount = 1
+		x = unsafe.Pointer(s.base())
+		size = s.elemsize
+	}
+
+	var scanSize uintptr
+	if !noscan {
+		// If allocating a defer+arg block, now that we've picked a malloc size
+		// large enough to hold everything, cut the "asked for" size down to
+		// just the defer header, so that the GC bitmap will record the arg block
+		// as containing nothing at all (as if it were unused space at the end of
+		// a malloc block caused by size rounding).
+		// The defer arg areas are scanned as part of scanstack.
+		if typ == deferType {
+			dataSize = unsafe.Sizeof(_defer{})
+		}
+		heapBitsSetType(uintptr(x), size, dataSize, typ)
+		if dataSize > typ.size {
+			// Array allocation. If there are any
+			// pointers, GC has to scan to the last
+			// element.
+			if typ.ptrdata != 0 {
+				scanSize = dataSize - typ.size + typ.ptrdata
+			}
+		} else {
+			scanSize = typ.ptrdata
+		}
+		c.local_scan += scanSize
+	}
+
+	// Ensure that the stores above that initialize x to
+	// type-safe memory and set the heap bits occur before
+	// the caller can make x observable to the garbage
+	// collector. Otherwise, on weakly ordered machines,
+	// the garbage collector could follow a pointer to x,
+	// but see uninitialized memory or stale heap bits.
+	publicationBarrier()
+
+	// Allocate black during GC.
+	// All slots hold nil so no scanning is needed.
+	// This may be racing with GC so do it atomically if there can be
+	// a race marking the bit.
+	if gcphase != _GCoff {
+		gcmarknewobject(uintptr(x), size, scanSize)
+	}
+
+	if raceenabled {
+		racemalloc(x, size)
+	}
+
+	if msanenabled {
+		msanmalloc(x, size)
+	}
+
+	mp.mallocing = 0
+	releasem(mp)
+
+	if debug.allocfreetrace != 0 {
+		tracealloc(x, size, typ)
+	}
+
+	if rate := MemProfileRate; rate > 0 {
+		if size < uintptr(rate) && int32(size) < c.next_sample {
+			c.next_sample -= int32(size)
+		} else {
+			mp := acquirem()
+			profilealloc(mp, x, size)
+			releasem(mp)
+		}
+	}
+
+	if assistG != nil {
+		// Account for internal fragmentation in the assist
+		// debt now that we know it.
+		assistG.gcAssistBytes -= int64(size - dataSize)
+	}
+
+	if shouldhelpgc {
+		if t := (gcTrigger{kind: gcTriggerHeap}); t.test() {
+			gcStart(gcBackgroundMode, t)
+		}
+	}
+
+	return x
+}
+#+END_SRC
 ** 参考文档
 + [[http://goog-perftools.sourceforge.net/doc/tcmalloc.html][TCMalloc]]
 + [[https://baike.baidu.com/item/%E5%86%85%E5%AD%98%E5%AF%B9%E9%BD%90][内存对齐]]
