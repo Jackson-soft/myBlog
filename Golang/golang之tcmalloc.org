@@ -74,6 +74,40 @@
  这里用链表来做内存管理基本单位，一方面是插入跟删除的快捷方便，另一方面就是链表可以最大化把零散内存利用起来。
 *** /mcache/
 作为 /Go/ 中 /P/ 级局部 /cache/ ，其实是 /TCMalloc/ 原生架构中的 /ThreadCache/ 。所以某一个正在 /P/ 中执行的 /G/ 的内存分配都独占这个 /cache/ 且不需加锁。
+其数据结构如下:
+#+BEGIN_SRC go
+type mcache struct {
+	// The following members are accessed on every malloc,
+	// so they are grouped here for better caching.
+	next_sample int32   // trigger heap sample after allocating this many bytes
+	local_scan  uintptr // bytes of scannable heap allocated
+
+	// Allocator cache for tiny objects w/o pointers.
+	// See "Tiny allocator" comment in malloc.go.
+
+	// tiny points to the beginning of the current tiny block, or
+	// nil if there is no current tiny block.
+	//
+	// tiny is a heap pointer. Since mcache is in non-GC'd memory,
+	// we handle it by clearing it in releaseAll during mark
+	// termination.
+	tiny             uintptr
+	tinyoffset       uintptr
+	local_tinyallocs uintptr // number of tiny allocs not counted in other stats
+
+	// The rest is not accessed on every malloc.
+
+	alloc [numSpanClasses]*mspan // spans to allocate from, indexed by spanClass
+
+	stackcache [_NumStackOrders]stackfreelist
+
+	// Local allocator stats, flushed during GC.
+	local_largefree  uintptr                  // bytes freed for large objects (>maxsmallsize)
+	local_nlargefree uintptr                  // number of frees for large objects (>maxsmallsize)
+	local_nsmallfree [_NumSizeClasses]uintptr // number of frees for small objects (<=maxsmallsize)
+}
+#+END_SRC
+这其中最核心的就是 /alloc [numSpanClasses]*mspan/  这个指针数组.这里就是 /mcache/ 所管理的可分配内存.这个数组的大小是 /spanClass/ 的两倍,意味着每种 /spanClass/  类型都有两组 /span/ 列表.
 而 /cache/ 是从 /heap/ 中分配的.初始化过程如下:
 #+BEGIN_SRC go
 func mallocinit() {
@@ -116,47 +150,49 @@ type mcentral struct {
  /mcentral/ 并没有单独的初始化过程,而是隐藏在全局变量 /mheap_/ 的初始化过程中.
 *** /mheap/
 #+BEGIN_SRC go
-type mheap struct {
-	lock      mutex
-	free      [_MaxMHeapList]mSpanList // free lists of given length up to _MaxMHeapList
-	freelarge mTreap                   // free treap of length >= _MaxMHeapList
-	busy      [_MaxMHeapList]mSpanList // busy lists of large spans of given length
-	busylarge mSpanList                // busy lists of large spans length >= _MaxMHeapList
-	sweepgen  uint32                   // sweep generation, see comment in mspan
-	sweepdone uint32                   // all spans are swept
-	sweepers  uint32                   // number of active sweepone calls
-    allspans []*mspan // all spans out there
+  type mheap struct {
+      lock      mutex
+      free      [_MaxMHeapList]mSpanList // free lists of given length up to _MaxMHeapList
+      freelarge mTreap                   // free treap of length >= _MaxMHeapList
+      busy      [_MaxMHeapList]mSpanList // busy lists of large spans of given length
+      busylarge mSpanList                // busy lists of large spans length >= _MaxMHeapList
+      sweepgen  uint32                   // sweep generation, see comment in mspan
+      sweepdone uint32                   // all spans are swept
+      sweepers  uint32                   // number of active sweepone calls
+      allspans []*mspan // all spans out there
 
-	arenas [1 << arenaL1Bits]*[1 << arenaL2Bits]*heapArena
+      sweepSpans [2]gcSweepBuf // gc 的两个扫描链表
 
-	arenaHints *arenaHint     // 堆空间
-    // .....
+      arenas [1 << arenaL1Bits]*[1 << arenaL2Bits]*heapArena
 
-	//_ uint32 // ensure 64-bit alignment of central
+      arenaHints *arenaHint
+      // .....
 
-	// central free lists for small size classes.
-	// the padding makes sure that the MCentrals are
-	// spaced CacheLineSize bytes apart, so that each MCentral.lock
-	// gets its own cache line.
-	// central is indexed by spanClass.
-	central [numSpanClasses]struct {
-		mcentral mcentral
-		pad      [sys.CacheLineSize - unsafe.Sizeof(mcentral{})%sys.CacheLineSize]byte
-	}
+      //_ uint32 // ensure 64-bit alignment of central
 
-	spanalloc             fixalloc // allocator for span*
-	cachealloc            fixalloc // allocator for mcache*
-	treapalloc            fixalloc // allocator for treapNodes* used by large objects
-	specialfinalizeralloc fixalloc // allocator for specialfinalizer*
-	specialprofilealloc   fixalloc // allocator for specialprofile*
-	speciallock           mutex    // lock for special record allocators.
-	arenaHintAlloc        fixalloc // allocator for arenaHints
+      // central free lists for small size classes.
+      // the padding makes sure that the MCentrals are
+      // spaced CacheLineSize bytes apart, so that each MCentral.lock
+      // gets its own cache line.
+      // central is indexed by spanClass.
+      central [numSpanClasses]struct {
+          mcentral mcentral
+          pad      [sys.CacheLineSize - unsafe.Sizeof(mcentral{})%sys.CacheLineSize]byte
+      }
 
-	unused *specialfinalizer // never set, just here to force the specialfinalizer type into DWARF
-}
+      spanalloc             fixalloc // allocator for span*
+      cachealloc            fixalloc // allocator for mcache*
+      treapalloc            fixalloc // allocator for treapNodes* used by large objects
+      specialfinalizeralloc fixalloc // allocator for specialfinalizer*
+      specialprofilealloc   fixalloc // allocator for specialprofile*
+      speciallock           mutex    // lock for special record allocators.
+      arenaHintAlloc        fixalloc // allocator for arenaHints
+
+      unused *specialfinalizer // never set, just here to force the specialfinalizer type into DWARF
+  }
 #+END_SRC
 结构中的 /central/ 就是前面我们说的 /mcentral/ .
-/mheap_/ 是一个全局变量，会在系统初始化的时候初始化（在函数 mallocinit() 中.
+/mheap_/ 是一个全局变量,管理着 /GO/ 程序中所有的内存，会在系统初始化的时候初始化,在函数 mallocinit() 中.
 初始化代码如下:
 #+BEGIN_SRC go
 // Initialize the heap.

@@ -1,5 +1,7 @@
-auto/ 
-*.bbl 
-*.pdf 
+auto/
+*.bbl
+*.pdf
 *.tex
 *.log
+.DS_Store
+*.html

@@ -1,0 +1,105 @@
+#+TITLE: /Pika/ 简述
+* /pika/ 存的意义
+/redis/ 本身是一个内存存储系统，如果我们存储数据的量级过大则需要大量的内存（钱，哈哈;毕竟相对于 /SSD/ 来说，闪存的价格还是贵那么一点。），或导致服务器内存不够用。
+还有一点就是，目前 /redis/ 是单线程的，对于目前多核 /CPU/ 有点浪费。
+* /pika/ 基本架构
+*** 总体架构
+[[./pika.png]]
+架构很简单，就是接收 /redis client/ 发过来的 /redis/ 命令，有个解析层把命令解析出来，通过消息分发线程把任务分发给工作线程来处理，数据交由 /rocksdb/ 引擎来处理。
+*** 线程模型
+跟 /redis/ 最大的区别就是 /pika/ 是多线程的，下面我们来看看它的线程模型。
+
+我们可以通过 /top/ 命令来查进程下的线程。当然先要知道进程的 /pid/ 。
+[[./pika-ps.png]]
+
+由于在我机器上 /pika/ 的 /pid/ 是 23956，所以命令如下：
+#+BEGIN_SRC shell
+top -H -p 23956
+#+END_SRC
+结果如下：
+
+[[./pika-top.png]]
+
+这里解释一下上图中的线程：
++ /pika/ : 主线程
++ /Dispatcher/ : 接收用户的请求
++ /WorkerThread/ : 工作线程（线程池），用于处理用户的命令并返回结果，如果执行写命令会追加到 /binlog/ 。
++ /TrysyncThread/ :
++ /BinlogReceiver/ : /slave/ 与 /master/ 同步 /binlog/ 偏移量线程。
++ /rocksdb/ : /rocksdb/ 存储引擎线程。
+* /pika/ 与 /redis/ 的性能测试对比
+** 环境
+*** 机器配置
+    + /CPU/ : 4U
+    + /Memory/ : 8G
+    + /Disk/ : 80G
+*** 软件版本
+    + /pika/ : 3.0.7
+    + /redis/ : 3.2.12
+** 测试对比
+测试客户端使用统一参数：
++ -T : 4个线程
++ -n : 600000请求
++ -c : 100个客户连接
++ -d : 数据大小100
+
+/pika/ 的多线程在于配置线程数：
+#+BEGIN_SRC text
+thread-num : 1
+#+END_SRC
+*** /redis/
+测试命令如下：
+#+BEGIN_SRC shell
+./tests/vire-benchmark -h 10.1.22.101 -p 6379 -T 4 -n 600000 -c 100 -d 100 -q
+#+END_SRC
+
+测试结果：
+
+[[./redis-100.png]]
+
+系统占用：
+
+[[./redis-top1.png]]
+
+*** /pika/ 多线程
+测试命令：
+#+BEGIN_SRC shell
+./tests/vire-benchmark -h 10.1.22.101 -p 9221 -T 4 -n 600000 -c 100 -d 100 -q
+#+END_SRC
+
+测试结果：
+
+[[./pika-100.png]]
+
+系统占用：
+
+[[./pika-top1.png]]
+
+*** /pika/ 单线程
+测试命令与多线程一样。
+
+测试结果：
+
+[[./pika-100-1.png]]
+
+系统占用：
+
+[[./pika-top-1.png]]
+
+这里我们看到只有一个 /WorkerThread/ 了。
+*** 结论
+* /pika/ 场景
+  */pika/ 的优势*
+  + /pika/ 本身自带落盘属性，并且采用 /Google/ 的 /snappy/ 压缩库，压缩比大，对于数据量较大的存储能够节约成本。
+  + 多线程，不会有阻塞。
+  + 官方支持 /Docker/ 部署。
+
+当然，这并不是说 /pika/ 是用来替代 /redis/ ，在一些对延时及延时稳定性要求高，或者用作队列等场景，还需使用 /redis/ 。
+还有就是 /pika/ 目前对标的只是 /redis/ 本身，对于分布式只能使用跟 /redis/ 同样的解决方案 /codis/ 。但据说社区也在讨论这一块的内容了。
+* 其他相关
++ 主页
+[[https://github.com/Qihoo360/pika][pika]]
++ 测试工具
+[[https://github.com/vipshop/vire][vire]] 这个是唯品会开源的一个 /redis/ 性能测试工具，能更好的测试多线程/多进程架构的 /KV/ 系统的性能。
+
+[[https://github.com/antirez/redis][redis-benchmark]] /redis/ 自带的性能测试工具，只能测试像 /redis/ 这样的单线程 /KV/ 系统的性能。
