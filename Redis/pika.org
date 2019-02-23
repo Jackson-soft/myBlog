@@ -5,11 +5,13 @@
 * /pika/ 基本架构
 *** 总体架构
 [[./pika.png]]
+
 架构很简单，就是接收 /redis client/ 发过来的 /redis/ 命令，有个解析层把命令解析出来，通过消息分发线程把任务分发给工作线程来处理，数据交由 /rocksdb/ 引擎来处理。
 *** 线程模型
 跟 /redis/ 最大的区别就是 /pika/ 是多线程的，下面我们来看看它的线程模型。
 
 我们可以通过 /top/ 命令来查进程下的线程。当然先要知道进程的 /pid/ 。
+
 [[./pika-ps.png]]
 
 由于在我机器上 /pika/ 的 /pid/ 是 23956，所以命令如下：
@@ -20,7 +22,7 @@ top -H -p 23956
 
 [[./pika-top.png]]
 
-这里解释一下上图中的线程：
+这里看一下上图中的线程：
 + /pika/ : 主线程
 + /Dispatcher/ : 接收用户的请求
 + /WorkerThread/ : 工作线程（线程池），用于处理用户的命令并返回结果，如果执行写命令会追加到 /binlog/ 。
@@ -88,6 +90,8 @@ thread-num : 1
 
 这里我们看到只有一个 /WorkerThread/ 了。
 *** 结论
+由于我用的是日常环境，数据盘是共享盘，所以从测试的数据上看， /pika/ 的单多线程的性能差别不大。从官方测试数据上看， /pika/ 在线程数为20的时候性能是最好的。
+在与 /redis/ 的测试对比中，我的测试结果跟官方差不多，即在常用命令的操作上性能稍微落后于 /redis/ ，但在有些命令上性能别差别较大（LRANGE，PFADD，PFMERGE等）。
 * /pika/ 场景
   */pika/ 的优势*
   + /pika/ 本身自带落盘属性，并且采用 /Google/ 的 /snappy/ 压缩库，压缩比大，对于数据量较大的存储能够节约成本。
@@ -98,8 +102,8 @@ thread-num : 1
 还有就是 /pika/ 目前对标的只是 /redis/ 本身，对于分布式只能使用跟 /redis/ 同样的解决方案 /codis/ 。但据说社区也在讨论这一块的内容了。
 * 其他相关
 + 主页
-[[https://github.com/Qihoo360/pika][pika]]
+  [[https://github.com/Qihoo360/pika][pika]]
 + 测试工具
-[[https://github.com/vipshop/vire][vire]] 这个是唯品会开源的一个 /redis/ 性能测试工具，能更好的测试多线程/多进程架构的 /KV/ 系统的性能。
+  [[https://github.com/vipshop/vire][vire]] 这个是唯品会开源的一个 /redis/ 性能测试工具，能更好的测试多线程/多进程架构的 /KV/ 系统的性能。
 
-[[https://github.com/antirez/redis][redis-benchmark]] /redis/ 自带的性能测试工具，只能测试像 /redis/ 这样的单线程 /KV/ 系统的性能。
+  [[https://github.com/antirez/redis][redis-benchmark]] /redis/ 自带的性能测试工具，只能测试像 /redis/ 这样的单线程 /KV/ 系统的性能。
