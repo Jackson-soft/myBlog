@@ -106,8 +106,10 @@ thread-num : 1
 决分布式这一块的话，诱惑力还是蛮大的。
 * 其他相关
 + 主页
+
   [[https://github.com/Qihoo360/pika][pika]]
 + 测试工具
+
   [[https://github.com/vipshop/vire][vire]] 这个是唯品会开源的一个 /redis/ 性能测试工具，能更好的测试多线程/多进程架构的 /KV/ 系统的性能。
 
   [[https://github.com/antirez/redis][redis-benchmark]] /redis/ 自带的性能测试工具，只能测试像 /redis/ 这样的单线程 /KV/ 系统的性能。

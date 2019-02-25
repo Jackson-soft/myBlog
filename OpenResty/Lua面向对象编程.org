@@ -1,0 +1,28 @@
+#+TITLE: Lua 面向对象编程
+
+* 类
+** 一个简单的例子
+#+BEGIN_SRC lua
+  local _M = {}
+
+  local mt = { __index = _M }
+
+  function _M.New(name,age)
+      return setmetatable({name = name or "", age = age or 0}, mt)
+  end
+
+  function _M:GetName()
+      return self.name
+  end
+
+  return _M
+#+END_SRC
+
+** 实例化
+#+BEGIN_SRC lua
+local s = pp.New("jacka", 33)
+
+print(s:GetName())
+#+END_SRC
+* 私有函数
+私有函数就是在 /Lua/ 的类里写带有 /local/ 属性的普通函数。但就是有一个问题，私有函数没法默认传入 /self/ 变量。
