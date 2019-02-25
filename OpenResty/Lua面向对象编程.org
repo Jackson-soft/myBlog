@@ -1,5 +1,32 @@
 #+TITLE: Lua 面向对象编程
+* 模块
+** 简单的模块
+#+BEGIN_SRC lua
+  local _M = {}
 
+  _M.level = 1
+
+  function _M.setLevel(le)
+      _M.level = le
+  end
+
+  function _M.getLevel()
+      return _M.level
+  end
+
+  return _M
+#+END_SRC
+
+我们假如上面的模块文件名叫 /pp.lua/ 的话。
+
+调用方法如下：
+#+BEGIN_SRC lua
+  local pp = require("pp")
+
+  pp.setLevel(4)
+
+  print(pp.getLevel())
+#+END_SRC
 * 类
 ** 一个简单的例子
 #+BEGIN_SRC lua
