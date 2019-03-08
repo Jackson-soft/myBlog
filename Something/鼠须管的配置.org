@@ -1,0 +1,50 @@
+#+TITLE: 鼠须管输入法的配置
+* 说明
+/rime/ 是一个跨平台的输入法平台。
+* 安装
+#+BEGIN_SRC shell
+brew cask install squirrel
+#+END_SRC
+* 配置目录
+配置文件路径：
++ Mac OS
+  - ~/Library/Rime
+
+配置扩展词库需要的文件：
++ 快捷键、候选栏、输入方案选单等等定义
+  - /default.custom.yaml/
++ 外观样式定义
+  - /squirrel.custom.yaml/ (Mac OS X)
+* 配置
+** 输入法扩展
+在设置目录里面新建或编辑 /default.custom.yaml/ 文件。
+#+BEGIN_SRC yaml
+patch:
+  schema_list:
+    - schema: wubi_pinyin
+#+END_SRC
+
+这里是选择五笔拼音输入法。在选择输入法之前需要下载相关的词库扩展，命令如下：
+#+BEGIN_SRC shell
+curl -fsSL https://git.io/rime-install | bash -s -- :preset wubi pinyin-simp
+#+END_SRC
+** 外观配置
+新建或修改设置目录里面的 /weasel.custom.yaml/ （Windows)或 /squirrel.custom.yaml/ (Mac)。
+#+BEGIN_SRC yaml
+  patch:
+    style/color_scheme: aqua # 选择配色方案
+    style/horizontal: true # 候选窗横向显示
+    style/font_point: 18 # 字体
+#+END_SRC
+
+其中 /color_scheme/ 的选择有：
+
++ 碧水 - /aqua/
++ 青天 - /azure/
++ 明月 - /luna/
++ 墨池 - /ink/
++ 孤寺 - /lost_temple/
++ 暗堂 - /dark_temple/
++ 星際爭霸 - /starcraft/
+** 输入法词库配置
+某个输入法的词库配置文件名一般是 /xxx.custom.yaml/ ,这个 /xxx/ 是输入法的英文名称。比如五笔拼音的就是 /wubi_pinyin.custom.yaml/ 。
