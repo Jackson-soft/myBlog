@@ -1,0 +1,81 @@
+#+TITLE: REST Client入门
+* 说明
+/REST Client/ 应该算是在测试 /REST API/ 时候的另一个选择吧，其本身支持 /cURL/ 和 /RFC 2616/ 两种标准来调用 /REST API/ 。
+其文件后缀一般是 /.http/ 或 /.rest/ 两种，不同的请求之间使用 /###/ 分隔。
+* 入门
+** /cURL/ 方式
+#+BEGIN_SRC shell
+curl -X POST "http://example.com/api/v1/create" -d "Hello World"
+#+END_SRC
+** /RFC 2616/ 方式
+*** /GET/
+#+BEGIN_SRC http
+GET https://example.com/comments HTTP/1.1
+#+END_SRC
+*** /POST/
+#+BEGIN_SRC http
+POST https://example.com/comments HTTP/1.1
+content-type: application/json
+
+{
+    "name": "sample",
+    "time": "Wed, 21 Oct 2015 18:27:50 GMT"
+}
+
+###
+POST http://example.com/comments HTTP/1.1
+Content-Type: application/x-www-form-urlencoded
+
+test=2&a=1
+#+END_SRC
+*** /Form Data/
+如果需要上传文件的话，则文件输入需要使用 /</ 符号。
+#+BEGIN_SRC http
+POST https://example.com/comments HTTP/1.1
+Content-Type: application/xml
+Authorization: token xxx
+
+< ./demo.xml
+#+END_SRC
+
+如果上传的是二进制的话，则需要像下面一样：
+#+BEGIN_SRC http
+POST https://api.example.com/user/upload
+Content-Type: multipart/form-data; boundary=----WebKitFormBoundary7MA4YWxkTrZu0gW
+
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="text"
+
+title
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="image"; filename="1.png"
+Content-Type: image/png
+
+< ./1.png
+------WebKitFormBoundary7MA4YWxkTrZu0gW--
+#+END_SRC
+*** 变量
+对于一些我们要常用到的变量，我们可以使用变量赋值的方式来做：
+#+BEGIN_SRC http
+@hostname = api.example.com
+@port = 8080
+@host = {{hostname}}:{{port}}
+@contentType = application/json
+@createdAt = {{$datetime iso8601}}
+
+###
+
+@name = hello
+
+GET https://{{host}}/authors/{{name}} HTTP/1.1
+
+###
+
+PATCH https://{{host}}/authors/{{name}} HTTP/1.1
+Content-Type: {{contentType}}
+
+{
+    "content": "foo bar",
+    "created_at": {{createdAt}}
+}
+#+END_SRC

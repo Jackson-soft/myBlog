@@ -9,7 +9,7 @@
 
 ** 基本用法
 
-+ 使用命令 /go mod init/ 来创建一个空的 /go.mod/ 文件。
++ 使用命令 /go mod init mode_name/ 来创建一个空的 /go.mod/ 文件，其中 /mode_name/ 是你的项目或模块名称。
 + 然后使用 /go build/ 命令编译项目。在这个编译的过程，会往 /go.mod/ 文件中写入项目的依赖等相关信息。大概像下面这样:
 
 #+BEGIN_EXAMPLE
