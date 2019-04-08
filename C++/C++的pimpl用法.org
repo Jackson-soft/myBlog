@@ -1,0 +1,41 @@
+#+TITLE: /C++/ 的 /PIMPL/ 用法
+* 简介
+C++ 中的“柴郡猫技术”(Cheshire Cat Idiom)，又称为 PIMPL(Pointer to implementation),[[https://en.wikipedia.org/wiki/Opaque_pointer][Opaque Pointer]] 等，是一种常用的，用来对“类的接口与实现”进行解耦的方法。
+它将类的实现细节放到分离的、以不透明指针访问的类中，以从其对象表示中移除实现细节，此种技艺在 /Boost/ 大量使用。
+
+#+BEGIN_SRC c++
+  // MyClass.h
+  class MyClass {
+  public:
+      // something
+  private:
+      class Pimpl;
+      std::unique_ptr<Pimpl> mPimpl;
+  };
+
+  // MyClass.cpp
+  class MyClass::Pimpl {
+
+  };
+
+  MyClass::MyClass() : mPimpl(new Pimpl())
+  {
+      /* ... */
+  }
+#+END_SRC
+
+此技巧用于构造拥有稳定 /ABI/ 的 /C++/ 库接口，及减少编译时依赖。
+* 实现
+* 权衡
+** 优点
++ 降低耦合
++ 信息隐藏
++ 降低编译信赖，提高编译速度
+** 缺点
++ 由于指针的调用导致性能下降
++ 代码的可读性下降
+* 参考文档
++ [[https://en.cppreference.com/w/cpp/language/pimpl][PIMPL]]
++ [[https://en.wikipedia.org/wiki/Opaque_pointer][Opaque pointer]]
++ [[https://insaneguy.me/2015/04/05/cheshire_cat_in_cpp-pimpl_idiom/]]
++ [[https://stackoverflow.com/questions/60570/why-should-the-pimpl-idiom-be-used]]
