@@ -55,6 +55,19 @@ POWERLEVEL9K_LEFT_PROMPT_ELEMENTS=(dir dir_writable vcs)
 POWERLEVEL9K_MODE='nerdfont-complete'
 ZSH_THEME="powerlevel9k/powerlevel9k"
 #+END_SRC
+*** /vscode/ 相关配置
+必须的字体安装：
+#+BEGIN_SRC shell
+brew cask install font-meslo-nerd-font
+#+END_SRC
+
+如果在 /vscode/ 的终端下也想使用 /Powerlevel9k/ 主题的话，要添加如下配置：
+#+BEGIN_SRC json
+"terminal.external.osxExec": "iTerm.app",
+"terminal.integrated.cursorBlinking": true,
+"terminal.integrated.fontFamily": "MesloLGL Nerd Font",
+"terminal.integrated.fontSize": 14,
+#+END_SRC
 * /fzf/
 [[https://github.com/junegunn/fzf][fzf]] 是一个模糊查找工具，其主要功能有查找文件、历史命令查询、快速进入目录。如果配合 /find/ 的替代命令 /fd/ 口感更佳。
 ** 安装
