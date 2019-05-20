@@ -1,0 +1,111 @@
+#+TITLE: /iTerm2/ 的配置
+* /iTerm2/ 快捷键
++ ⌘+Shift+E 召唤时间线
++ ⌘+Option+b 时光机
++ ⌘+T 新Tab
++ ⌘+D 水平分屏
++ ⌘+← 切换Tab
++ ⌘+shift+← 切换分屏
+* /zsh/
+/zsh/ 的功能极其强大，只是配置过于复杂，所以 [[https://github.com/robbyrussell/oh-my-zsh][oh-my-zsh]] 应运而生，解救广大人民群众。
+** 安装
+#+BEGIN_SRC shell
+# install zsh
+brew install zsh
+
+# isntall oh-my-zsh
+sh -c "$(curl -fsSL https://raw.githubusercontent.com/robbyrussell/oh-my-zsh/master/tools/install.sh)"
+#+END_SRC
+** 配置
+*** 历史命令补全
+[[https://github.com/zsh-users/zsh-autosuggestions][zsh-autosuggestions]] 是一个 /zsh/ 历史命令补全插件。
+#+BEGIN_SRC shell
+git clone https://github.com/zsh-users/zsh-autosuggestions $ZSH_CUSTOM/plugins/zsh-autosuggestions
+#+END_SRC
+*** 命令高亮
+[[https://github.com/zsh-users/zsh-syntax-highlighting][zsh-syntax-highlighting]] 是一个命令高亮插件。
+#+BEGIN_SRC shell
+git clone https://github.com/zsh-users/zsh-syntax-highlighting.git ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-syntax-highlighting
+#+END_SRC
+*** 配置
+#+BEGIN_SRC shell
+plugins=(
+  git
+  z
+  extract
+  zsh-autosuggestions
+  zsh-syntax-highlighting
+)
+#+END_SRC
+** 主题
+[[https://github.com/bhilburn/powerlevel9k][Powerlevel9k]] 是一款“花哨”的 /zsh/ 主题。但如果有 [[https://github.com/powerline/fonts][Powerline-Fonts]] 作为漂亮界面的支持，我使用的是 [[https://github.com/ryanoasis/nerd-fonts][Nerd-Fonts]] 字体，具体选择看大家
+个人的口味。
+*** 安装
+#+BEGIN_SRC shell
+git clone https://github.com/bhilburn/powerlevel9k.git $ZSH_CUSTOM/themes/powerlevel9k
+#+END_SRC
+*** 字体安装
+#+BEGIN_SRC shell
+brew cask install font-sourcecodepro-nerd-font
+#+END_SRC
+*** 配置
+在 /.zshrc/ 中加入下面的配置
+#+BEGIN_SRC shell
+POWERLEVEL9K_LEFT_PROMPT_ELEMENTS=(dir dir_writable vcs)
+POWERLEVEL9K_MODE='nerdfont-complete'
+ZSH_THEME="powerlevel9k/powerlevel9k"
+#+END_SRC
+* /fzf/
+[[https://github.com/junegunn/fzf][fzf]] 是一个模糊查找工具，其主要功能有查找文件、历史命令查询、快速进入目录。如果配合 /find/ 的替代命令 /fd/ 口感更佳。
+** 安装
+#+BEGIN_SRC shell
+# install fd & fzf
+$ brew install fd fzf
+
+# bind default key-binding
+$ /usr/local/opt/fzf/install
+$ source ~/.zshrc
+
+# alter filefind to fd
+$ vim ~/.zshenv
+export FZF_DEFAULT_COMMAND='fd --type file'
+export FZF_CTRL_T_COMMAND=$FZF_DEFAULT_COMMAND
+export FZF_ALT_C_COMMAND="fd -t d . "
+
+$ source ~/.zshenv
+#+END_SRC
+** /fzf/ 里的快捷键
+在 /finder/（输出交换窗口）里:
++ Ctrl-J/Ctrl-K/Ctrl-N/Ctrlk-N可以用来将光标上下移动
++ Enter键用来选中条目， Ctrl-C/Ctrl-G/Esc用来退出
++ 在多选模式下（-m), TAB和Shift-TAB用来多选
++ Mouse: 上下滚动，选中，双击； /Shift-click/ 或 /shift-scoll/ 用于多选模式。
+** 命令行下的快捷键
+*** /CTRL-T/
+在命令行下按下 /ctrl-t/ 会打开 /fzf/ 窗口，如果你选中某个条目并按下 /Enter/ ， 选中的条目会被拷贝到命令行上。
+
+如果想同时预览文件内容，可以使用 /--preview/ 选项。
+
+也可以用 /--select-1/ 和 /--exit-0/ 。
+
+前者是如果只有一个条目，那么自动选中并退出 /fzf/ 。
+
+后者是如果条目为空，自动退出。
+
+上面两个选项对 /ALT-C/ 也有用。
+*** /CTRL-R/
+在命令行下按下 /ctrl-r/, /fzf/ 会列出 /history/ 命令，选中条目并离开 /fzf/ 的话， 选中条目会被拷到命令行上。
+*** /ALT-C/
+在命令行上按下 /alt-c/, 会列出当前文件夹下的目录，选中条目会自动进入到相应目录。
+** 预览
+/fzf/ 可以添加参数 /fzf --preview/ 完成对文件的预览。
+
+#+BEGIN_SRC shell
+# set alias
+$ vim ~/.zshenv
+alias pp='fzf --preview '"'"'[[ $(file --mime {}) =~ binary ]] && echo {} is a binary file || (highlight -O ansi -l {} || coderay {} || rougify {} || cat {}) 2> /dev/null | head -500'"'"
+alias oo='fzf --preview '"'"'[[ $(file --mime {}) =~ binary ]] && echo {} is a binary file || (highlight -O ansi -l {} || coderay {} || rougify {} || tac {}) 2> /dev/null | head -500'"'"  # flashback
+$ source ~/.zshenv
+#+END_SRC
+
+设置完别名之后,利用 /pp/ 即可完成文件的预览 /oo/ 用于倒叙预览文件,在一些流数据文件中比较方便。
