@@ -1,11 +1,14 @@
 #+TITLE: /iTerm2/ 的配置
 * /iTerm2/ 快捷键
-+ ⌘+Shift+E 召唤时间线
-+ ⌘+Option+b 时光机
-+ ⌘+T 新Tab
-+ ⌘+D 水平分屏
-+ ⌘+← 切换Tab
-+ ⌘+shift+← 切换分屏
++ ⌘ + Shift + E: 召唤时间线
++ ⌘ + Option + b: 时光机
++ ⌘ + T: 新Tab
++ ⌘ + D: 水平分屏
++ ⌘ + d: 垂直分屏
++ ⌘ + ] 、⌘ + [:  在最近使用的分屏直接切换
++ ⌘ + 方向键:  按方向切换标签页
++ ⌘ + Option + 方向键:  切换到指定位置的分屏
++ ⌘ + 数字: 切换标签页
 * /zsh/
 /zsh/ 的功能极其强大，只是配置过于复杂，所以 [[https://github.com/robbyrussell/oh-my-zsh][oh-my-zsh]] 应运而生，解救广大人民群众。
 ** 安装
@@ -38,8 +41,7 @@ plugins=(
 )
 #+END_SRC
 ** 主题
-[[https://github.com/bhilburn/powerlevel9k][Powerlevel9k]] 是一款“花哨”的 /zsh/ 主题。但如果有 [[https://github.com/powerline/fonts][Powerline-Fonts]] 作为漂亮界面的支持，我使用的是 [[https://github.com/ryanoasis/nerd-fonts][Nerd-Fonts]] 字体，具体选择看大家
-个人的口味。
+[[https://github.com/bhilburn/powerlevel9k][Powerlevel9k]] 是一款“花哨”的 /zsh/ 主题。但必须有 [[https://github.com/powerline/fonts][Powerline-Fonts]] 作为漂亮界面的支持，我使用的是 [[https://github.com/ryanoasis/nerd-fonts][Nerd-Fonts]] 字体，具体选择看大家个人的口味。
 *** 安装
 #+BEGIN_SRC shell
 git clone https://github.com/bhilburn/powerlevel9k.git $ZSH_CUSTOM/themes/powerlevel9k
