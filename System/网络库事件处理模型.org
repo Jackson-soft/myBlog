@@ -1,0 +1,71 @@
+#+TITLE: 事件处理模型
+一般地,I/O多路复用机制都依赖于一个事件多路分离器(Event Demultiplexer)。分离器对象可将来自事件源的I/O事件分离出来，并分发到对应的read/write事件处理器(Event Handler)。
+开发人员预先注册需要处理的事件及其事件处理器（或回调函数）；事件分离器负责将请求事件传递给事件处理器。两个与事件分离器有关的模式就是 //Reactor// 和 //Proactor// 。
+
+//Reactor// 模式采用同步IO，而 //Proactor// 采用异步IO(目前的完全体貌似只有 //Windows// 的 [[https://zh.wikipedia.org/wiki/IOCP][IOCP]], /Linux/ 下目前只有模拟（[[https://think-async.com/Asio/][Asio]]）)。
+* /Reactor/ 事件处理模型
+*Reactor的核心思想* ：将关注的I/O事件注册到多路复用器上，一旦有I/O事件触发，将事件分发到事件处理器中，执行就绪I/O事件对应的处理函数中。模型中有三个重要的组件：
++ *多路复用器* ：由操作系统提供接口, /Linux/ 的I/O复用接口就是 /epoll/
++ *事件分离器* ：将多路复用器返回的就绪事件分发到事件处理器中
++ *事件处理器* ：处理就绪事件处理函数。
+
+一个典型的 /Reactor/ 模型类图如下：
+
+[[file:reactor_class.jpeg]]
+
+上述类结构中包含如下角色：
++ *Handle* : 操作系统管理的资源，包括：网络链接，打开的文件，计时器，同步对象等等；
++ *Event Demultiplexer* : 执行多路事件分解操作，对操作系统内核实现I/O复用接口的封装；用于阻塞等待发生在句柄集合上的一个或多个事件（如 /epoll/ )；
++ *Event Handler* : 抽象类表示I/O事件处理器，它拥有I/O文件句柄 /Handle/ （通过 /get_handle/ 获取），以及对 /Handle/ 的操作 /handle_event/ （读/写等）；
++ *Event Handler A(B)* : 继承于 /EventHandler/ 的子类可以对事件处理器的行为进行定制；
++ *Reactor* : 用于管理 /EventHandler/ （注册、删除等），并使用 /handle_events/ 实现事件循环，运行事件处理循环，并等待就绪事件的触发（可读/写等），并分发事
+件到之前注册的回调函数上处理。
+
+/Reactor/ 模型的工作流程:
+
+[[file:reactor.jpeg]]
+
+1. 注册I/O就绪事件处理器；
+2. 事件分离器等待I/O就绪事件；
+3. I/O事件触发，激活事件分离器，分离器调度对应的事件处理器；
+4. 事件处理器完成I/O操作，处理数据。
+
+目前在 /Linux/ 系统上 /Reactor/ 模型应用的还是相当广泛的并且也是很成熟的，比如 /libevent/ 、 /libuv/ 、 /redis/ 、 /nginx/ 。
+* /Proactor/ 事件处理模型
+与Reactor不同的是，Proactor使用异步I/O系统接口将I/O操作托管给操作系统，Proactor模型中分发处理异步I/O完成事件，并调用相应的事件处理接口来处理业务逻辑。
+Boost asio采用的是Proactor模型，但是Linux上，采用I/O复用的方式来模拟Proactor，另启用线程来完成读写操作和调度。
+
+/Proactor/ 模型类图如下：
+
+[[file:proactor_class.jpeg]]
+
+/Proactor/ 主动器模式包含如下角色：
++ *Handle* 句柄 ：用来标识socket连接或是打开文件；
++ *Asynchronous Operation Processor* ：异步操作处理器，负责执行异步操作，一般由操作系统内核实现；
++ *Asynchronous Operation* ：异步操作；
++ *Completion Event Queue* ：完成事件队列，异步操作完成的结果放到队列中等待后续使用；
++ *Proactor* ：主动器；为应用程序进程提供事件循环，从完成事件队列中取出异步操作的结果，分发调用相应的后续处理逻辑；
++ *Completion Handler* ：完成事件接口，一般是由回调函数组成的接口；
++ *Concrete Completion Handler* ：完成事件处理逻辑，实现接口定义特定的应用处理逻辑；
+
+
+/Proactor/ 模型的工作流程：
+
+[[file:proactor.jpeg]]
+
+1. 应用程序启动，调用异步操作处理器提供的异步操作接口函数，调用之后应用程序和异步操作处理就独立运行，应用程序可以调用新的异步操作，而其它操作可以并发进行；
+2. 应用程序启动Proactor主动器，进行无限的事件循环，等待完成事件到来；
+3. 异步操作处理器执行异步操作，完成后将结果放入到完成事件队列；
+4. 主动器从完成事件队列中取出结果，分发到相应的完成事件回调函数处理逻辑中；
+
+目前 /Proactor/ 模型在 /Windows/ 上有操作系统的完整支持，所以在是真异步。目前应用的框架有 /ACE（Adaptive Communication Enviromen）/ 、 /boost.asio/ 。
+
+* 两者对比
+引用网上的一个比喻：
+/Reactor/ ：能收了你跟俺说一声。(I/O 复用)
+/Proactor/ : 你给我收十个字节，收好了跟俺说一声。(异步I/O)
+
+* 参考文档
++ [[https://segmentfault.com/a/1190000002715832]]
++ [[https://en.wikipedia.org/wiki/Proactor_pattern]]
++ [[https://en.wikipedia.org/wiki/Reactor_pattern]]
