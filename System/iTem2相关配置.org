@@ -75,7 +75,7 @@ yay -S nerd-fonts-fira-code
 // manjaro
 "terminal.external.linuxExec": "konsole",
 "terminal.integrated.cursorBlinking": true,
-"terminal.integrated.fontFamily": "FuraCode Nerd Font Mono",
+"terminal.integrated.fontFamily": "FuraCode Nerd Font",
 "terminal.integrated.fontSize": 14,
 #+END_SRC
 * /fzf/
