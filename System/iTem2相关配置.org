@@ -1,3 +1,4 @@
+
 #+TITLE: /iTerm2/ 的配置
 * /iTerm2/ 快捷键
 + ⌘ + Shift + E: 召唤时间线
@@ -60,14 +61,21 @@ ZSH_THEME="powerlevel9k/powerlevel9k"
 *** /vscode/ 相关配置
 必须的字体安装：
 #+BEGIN_SRC shell
-brew cask install font-meslo-nerd-font
+# homebrew
+brew cask install font-firacode-nerd-font
+
+# manjaro
+yay -S nerd-fonts-fira-code
 #+END_SRC
 
 如果在 /vscode/ 的终端下也想使用 /Powerlevel9k/ 主题的话，要添加如下配置：
 #+BEGIN_SRC json
+// macos
 "terminal.external.osxExec": "iTerm.app",
+// manjaro
+"terminal.external.linuxExec": "konsole",
 "terminal.integrated.cursorBlinking": true,
-"terminal.integrated.fontFamily": "MesloLGL Nerd Font",
+"terminal.integrated.fontFamily": "FuraCode Nerd Font Mono",
 "terminal.integrated.fontSize": 14,
 #+END_SRC
 * /fzf/
@@ -78,18 +86,22 @@ brew cask install font-meslo-nerd-font
 $ brew install fd fzf
 
 # bind default key-binding
-$ /usr/local/opt/fzf/install
-$ source ~/.zshrc
+$ $(brew --prefix)/opt/fzf/install
+$ . ~/.zshrc
 
 # alter filefind to fd
 $ vim ~/.zshenv
-export FZF_DEFAULT_COMMAND='fd --type file'
+# Setting fd as the default source for fzf
+export FZF_DEFAULT_COMMAND='fd --type f'
+# To apply the command to CTRL-T as well
 export FZF_CTRL_T_COMMAND=$FZF_DEFAULT_COMMAND
 export FZF_ALT_C_COMMAND="fd -t d . "
 
-$ source ~/.zshenv
+$ . ~/.zshenv
 #+END_SRC
 ** /fzf/ 里的快捷键
+/fzf/ 的 /key-binding/ [[https://github.com/junegunn/fzf/wiki/Configuring-shell-key-bindings][wiki]]
+
 在 /finder/（输出交换窗口）里:
 + Ctrl-J/Ctrl-K/Ctrl-N/Ctrlk-N可以用来将光标上下移动
 + Enter键用来选中条目， Ctrl-C/Ctrl-G/Esc用来退出
@@ -120,7 +132,7 @@ $ source ~/.zshenv
 $ vim ~/.zshenv
 alias pp='fzf --preview '"'"'[[ $(file --mime {}) =~ binary ]] && echo {} is a binary file || (highlight -O ansi -l {} || coderay {} || rougify {} || cat {}) 2> /dev/null | head -500'"'"
 alias oo='fzf --preview '"'"'[[ $(file --mime {}) =~ binary ]] && echo {} is a binary file || (highlight -O ansi -l {} || coderay {} || rougify {} || tac {}) 2> /dev/null | head -500'"'"  # flashback
-$ source ~/.zshenv
+$ . ~/.zshenv
 #+END_SRC
 
 设置完别名之后,利用 /pp/ 即可完成文件的预览 /oo/ 用于倒叙预览文件,在一些流数据文件中比较方便。
