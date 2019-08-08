@@ -1,0 +1,151 @@
+#+TITLE: /JSON for Modern C++/ 库
+* 基本
+** 自动类型
+#+BEGIN_SRC c++
+nlohmann::json j;
+j["pi"] = 3.141;
+j["name"] = "Niels";
+j["answer"]["everything"] = 42;
+#+END_SRC
+** 序列化
+使用 /dump()/ 函数:
+#+BEGIN_SRC c++
+  //显式转换为string
+  std::string s = j.dump();  // {\"happy\":true,\"pi\":3.141}
+
+  //序列化与漂亮的打印
+  //传入空格的数量缩进
+  std::cout << j.dump(4) << std::endl;
+  // 输出：
+  //{
+  //     "happy": true,
+  //     "pi": 3.141
+  // }
+#+END_SRC
+** 反序列化
+*** 通过附加 /_json/ 到字符串文字来创建对象(反序列化):
+#+BEGIN_SRC c++
+//从字符串文字创建对象
+nlohmann::json j = " { \" happy \"：true，\" pi \"：3.141} " _json;
+
+//或者原始字符串文字
+auto j2 = R"（
+   {
+    "happy":true，
+    "pi":3.141
+  }
+）" _json;
+#+END_SRC
+请注意，没有附加 /_json/ 后缀，传递的字符串文字不会被解析，而只是用作 /JSON/ 字符串值。也就是说， /json j = "{ \"happy\": true, \"pi\": 3.141 }"/ 只存储
+字符串 /"{ "happy": true, "pi": 3.141 }"/ 而不是解析实际的对象。
+*** 使用 /json::parse()/ 函数
+#+BEGIN_SRC c++
+auto j = nlohmann::json::parse(" { \" happy \":true,\" pi \":3.141} ");
+#+END_SRC
+*** 从迭代器范围读取
+#+BEGIN_SRC c++
+  std ::vector<uint8_t> v = {'t', 'r', 'u', 'e'};
+  nlohmann::json j        = json ::parse(v.begin(), v.end());
+
+  //或
+  std ::vector<uint8_t> v = {'t', 'r', 'u', 'e'};
+  nlohmann::json j        = json ::parse(v);
+#+END_SRC
+* 与 /STL/ 的相似性
+** 容器接口
+也可以像使用 /STL/ 容器一样来用 /JSON/ 。
+#+BEGIN_SRC c++
+  // create an array using push_back
+  json j;
+  j.push_back("foo");
+  j.push_back(1);
+  j.push_back(true);
+
+  // also use emplace_back
+  j.emplace_back(1.78);
+
+  // iterate the array
+  for (json::iterator it = j.begin(); it != j.end(); ++it) {
+    std::cout << *it << '\n';
+  }
+
+  // range-based for
+  for (auto& element : j) {
+    std::cout << element << '\n';
+  }
+#+END_SRC
+** 与容器之间的转换
+#+BEGIN_SRC c++
+  std::vector<int> c_vector {1, 2, 3, 4};
+  json j_vec(c_vector);
+  // [1, 2, 3, 4]
+
+  std::deque<double> c_deque {1.2, 2.3, 3.4, 5.6};
+  json j_deque(c_deque);
+  // [1.2, 2.3, 3.4, 5.6]
+
+  std::list<bool> c_list {true, true, false, true};
+  json j_list(c_list);
+  // [true, true, false, true]
+
+  std::forward_list<int64_t> c_flist {12345678909876, 23456789098765, 34567890987654, 45678909876543};
+  json j_flist(c_flist);
+  // [12345678909876, 23456789098765, 34567890987654, 45678909876543]
+
+  std::array<unsigned long, 4> c_array {{1, 2, 3, 4}};
+  json j_array(c_array);
+  // [1, 2, 3, 4]
+
+  std::set<std::string> c_set {"one", "two", "three", "four", "one"};
+  json j_set(c_set); // only one entry for "one" is used
+  // ["four", "one", "three", "two"]
+
+  std::unordered_set<std::string> c_uset {"one", "two", "three", "four", "one"};
+  json j_uset(c_uset); // only one entry for "one" is used
+  // maybe ["two", "three", "four", "one"]
+
+  std::multiset<std::string> c_mset {"one", "two", "one", "four"};
+  json j_mset(c_mset); // both entries for "one" are used
+  // maybe ["one", "two", "one", "four"]
+
+  std::unordered_multiset<std::string> c_umset {"one", "two", "one", "four"};
+  json j_umset(c_umset); // both entries for "one" are used
+  // maybe ["one", "two", "one", "four"]
+#+END_SRC
+* 结构体与 /json/ 之间的转换
+如果想实现自定义结构体与 /json/ 之间的转换的话，必须在同一个 /namespace/ 下实现 /to_json/ 和 /from_json/ 两个函数。例如：
+#+BEGIN_SRC c++
+  namespace Aquarius
+  {
+  struct KeyData {
+      std::string Key;
+      bool Prefix;
+  };
+
+  void to_json(nlohmann::json &j, const KeyData &p) { j = nlohmann::json{{"key", p.Key}, {"perfix", p.Prefix}}; }
+
+  void from_json(const nlohmann::json &j, KeyData &p)
+  {
+      p.Key    = j.at("key").get<std::string>();
+      p.Prefix = j.value("prefix", false);
+  }
+  }
+#+END_SRC
+* /basic_json::value/
+/basic_json/ 除了提供容器常用的接口 /operator[]/  和 /at/ 之外，还提供了 /value/ 成员函数用于取对象中的值，当值不存在的时候提供默认值。这个方法和 /Python/ 中的 /or/ 很像。
+
+#+BEGIN_SRC python
+retun x or "default"
+#+END_SRC
+
+/C++/ 的操作：
+#+BEGIN_SRC c++
+  nlohmann::json j = {
+      {"exist", "hello"},
+  };
+
+  auto exist = j.value("exist", "");  // "hello"
+  auto noexist = j.value("noexist", "world");  // "world"
+#+END_SRC
+
+这个函数对于处理可选参数非常有用。
