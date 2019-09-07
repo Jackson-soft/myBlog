@@ -11,52 +11,57 @@
 + ⌘ + Option + 方向键:  切换到指定位置的分屏
 + ⌘ + 数字: 切换标签页
 * /zsh/
-/zsh/ 的功能极其强大，只是配置过于复杂，所以 [[https://github.com/robbyrussell/oh-my-zsh][oh-my-zsh]] 应运而生，解救广大人民群众。
+/zsh/ 的功能极其强大，只是配置过于复杂，所以我用 [[https://github.com/sorin-ionescu/prezto][prezto]] 来管理插件。
 ** 安装
 #+BEGIN_SRC shell
 # install zsh
 brew install zsh
 
-# isntall oh-my-zsh
-sh -c "$(curl -fsSL https://raw.githubusercontent.com/robbyrussell/oh-my-zsh/master/tools/install.sh)"
+# isntall prezto
+git clone --recursive https://github.com/sorin-ionescu/prezto.git "${ZDOTDIR:-$HOME}/.zprezto"
+
+# configuration files
+setopt EXTENDED_GLOB
+for rcfile in "${ZDOTDIR:-$HOME}"/.zprezto/runcoms/^README.md(.N); do
+  ln -s "$rcfile" "${ZDOTDIR:-$HOME}/.${rcfile:t}"
+done
+
+# Set Zsh as your default shell
+chsh -s /bin/zsh
 #+END_SRC
 ** 配置
-*** 历史命令补全
-[[https://github.com/zsh-users/zsh-autosuggestions][zsh-autosuggestions]] 是一个 /zsh/ 历史命令补全插件。
+在 /.zpreztorc/ 中修改如下配置
 #+BEGIN_SRC shell
-git clone https://github.com/zsh-users/zsh-autosuggestions $ZSH_CUSTOM/plugins/zsh-autosuggestions
-#+END_SRC
-*** 命令高亮
-[[https://github.com/zsh-users/zsh-syntax-highlighting][zsh-syntax-highlighting]] 是一个命令高亮插件。
-#+BEGIN_SRC shell
-git clone https://github.com/zsh-users/zsh-syntax-highlighting.git ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-syntax-highlighting
-#+END_SRC
-*** 配置
-#+BEGIN_SRC shell
-plugins=(
-  git
-  z
-  extract
-  zsh-autosuggestions
-  zsh-syntax-highlighting
-)
+zstyle ':prezto:load' pmodule \
+  'environment' \
+  'terminal' \
+  'editor' \
+  'history' \
+  'directory' \
+  'spectrum' \
+  'utility' \
+  'completion' \
+  'git' \
+  'syntax-highlighting' \
+  'history-substring-search' \
+  'autosuggestions' \
+  'prompt'
 #+END_SRC
 ** 主题
-[[https://github.com/bhilburn/powerlevel9k][Powerlevel9k]] 是一款“花哨”的 /zsh/ 主题。但必须有 [[https://github.com/powerline/fonts][Powerline-Fonts]] 作为漂亮界面的支持，我使用的是 [[https://github.com/ryanoasis/nerd-fonts][Nerd-Fonts]] 字体，具体选择看大家个人的口味。
+[[https://github.com/romkatv/powerlevel10k][Powerlevel10k]] 是一款“花哨”的 /zsh/ 主题。但必须有 [[https://github.com/powerline/fonts][Powerline-Fonts]] 作为漂亮界面的支持，我使用的是 [[https://github.com/ryanoasis/nerd-fonts][Nerd-Fonts]] 字体，具体选择看大家个人的口味。
 *** 安装
+在 /.zpreztorc/ 中修改以下配置
 #+BEGIN_SRC shell
-git clone https://github.com/bhilburn/powerlevel9k.git $ZSH_CUSTOM/themes/powerlevel9k
+zstyle :prezto:module:prompt theme powerlevel10k
 #+END_SRC
 *** 字体安装
 #+BEGIN_SRC shell
 brew cask install font-sourcecodepro-nerd-font
 #+END_SRC
 *** 配置
-在 /.zshrc/ 中加入下面的配置
+在 /.p10k.zsh/ 中修改下面的配置
 #+BEGIN_SRC shell
 POWERLEVEL9K_LEFT_PROMPT_ELEMENTS=(dir dir_writable vcs)
-POWERLEVEL9K_MODE='nerdfont-complete'
-ZSH_THEME="powerlevel9k/powerlevel9k"
 #+END_SRC
 *** /vscode/ 相关配置
 必须的字体安装：
@@ -70,10 +75,6 @@ yay -S nerd-fonts-fira-code
 
 如果在 /vscode/ 的终端下也想使用 /Powerlevel9k/ 主题的话，要添加如下配置：
 #+BEGIN_SRC json
-// macos
-"terminal.external.osxExec": "iTerm.app",
-// manjaro
-"terminal.external.linuxExec": "konsole",
 "terminal.integrated.cursorBlinking": true,
 "terminal.integrated.fontFamily": "FuraCode Nerd Font",
 "terminal.integrated.fontSize": 14,
