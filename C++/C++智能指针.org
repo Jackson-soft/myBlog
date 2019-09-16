@@ -1,12 +1,13 @@
-#+TITLE: C++11 智能指针
+#+TITLE: /Modern C++/ 智能指针
 
-** unique_ptr
+** /unique_ptr/
+/std::unique_ptr/ 是一个具有开销小，速度快， /move-only/ 特定的智能指针，使用独占拥有方式来管理资源。
 
-C++11 中提供了 std::unique_ptr，定义在头文件中。
+/std::unique_ptr/ 的使用场景是，你使用了 /C-like API/ 来返回一个指向堆内分配的数组的原生指针，而且你像对之接管拥有权。
 
-C++11 新增了 move 语义，相比 copy 语义，它能更好的实现值传递.std::auto_ptr 使用的是 copy 语义，为了向前兼容,C++11 没有修改 std::auto_ptr，而是引入了新的使用 move 语义的 std::unique_ptr.
+默认情况下，释放资源由 /delete/ 来完成，也可以指定自定义的析构函数来替代。但是具有丰富状态的 /deleters/ 和以函数指针作为 /deleters/ 增大了 /std::unique_ptr/ 的存储开销
 
-uniqu_ptr 的拷贝构造函数和赋值运算符都声明为 deleted，也就是说它不能被拷贝，只能通过 std::move 来转递它所指向的内存的所有权。
+你可以轻易且有效的将一个 /std::unique_ptr/ 转化为 /std::shared_ptr/ 。
 
 #+BEGIN_SRC C++
 std::unique_ptr<int> p1(new int(5));
@@ -17,11 +18,17 @@ p3.reset(); //释放内存。
 p1.reset(); //实际上什么都没做。
 #+END_SRC
 
-** shared_ptr 和 weak_ptr
+** /shared_ptr/ 和 /weak_ptr/
 
-基于 Boost 库, C++11 加入了 shared_ptr 和 weak_ptr.它们最早在 TR1 中就被引入，但在 C++11 中，在 Boost 的基础上又加入了新的功能。
+基于 /Boost/ 库, /C++11/ 加入了 /shared_ptr/ 和 /weak_ptr/ 。它们最早在 /TR1/ 中就被引入，但在 /C++11/ 中，在 /Boost/ 的基础上又加入了新的功能。
 
-std::shared_ptr 使用引用计数。每一个 shared_ptr 的拷贝都指向相同的内存。在最后一个 shared_ptr 析构的时候，内存才会被释放。
+/std::shared_ptr/ 使用引用计数。每一个 /shared_ptr/ 的拷贝都指向相同的内存。在最后一个 /shared_ptr/ 析构的时候，内存才会被释放。
+
+/std::shared_ptr/ 为了管理任意资源的共享式内存管理提供了自动垃圾回收的便利。
+
+/std::shared_ptr/ 是 /std::unique_ptr/ 的两倍大，除了控制块，还有需要原子引用计数操作引起的开销。
+
+在使用的时候应该避免从原生指针类型变量创建 /std::shared_ptr/ 。
 
 #+BEGIN_SRC C++
 std::shared_ptr<int> p1(new int(5));
@@ -31,8 +38,11 @@ p1.reset(); // 因为 p2 还在，所以内存没有释放。
 p2.reset(); // 释放内存，因为没有 shared_ptr 指向那块内存了。
 #+END_SRC
 
-std::shared_ptr 使用引用计数，所以有循环计数的问题。为了打破循环，可以使用 std::weak_ptr.顾名思义, weak_ptr 是一个弱引用，只引用，不计数。如果一块内存被 shared_ptr 和 weak_ptr 同时引用，
-当所有 shared_ptr 析构了之后，不管还有没有 weak_ptr 引用该内存，内存也会被释放。所以 weak_ptr 不保证它指向的内存一定是有效的，在使用之前需要检查。
+/std::shared_ptr/ 使用引用计数，所以有循环计数的问题。为了打破循环，可以使用 /std::weak_ptr/ 。顾名思义, /weak_ptr/ 是一个弱引用，只引用，不计数。如果一块内
+存被 /shared_ptr/ 和 /weak_ptr/ 同时引用，当所有 /shared_ptr/ 析构了之后，不管还有没有 /weak_ptr/ 引用该内存，内存也会被释放。所以 /std::weak_ptr/ 不保证它指向的内存一定
+是有效的，在使用之前需要检查。
+
+潜在的使用 /std::weak_ptr/ 的场景包括缓存，观察者列表，以及阻止 /std::shared_ptr/ 形成的环。
 
 #+BEGIN_SRC C++
 std::shared_ptr<int> p1(new int(5));
