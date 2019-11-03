@@ -1,0 +1,17 @@
+#:TITLE: /MXNet/ 入门相关
+* 编译 /C++/ 相关
+目前 /MXNet/ C++ 包必须要自己从源码编译。
+1. 代码
+#+begin_src shell
+git clone --recursive https://github.com/apache/incubator-mxnet mxnet
+#+end_src
+2. 线性运算库依赖
+*注意：线性运算库有很多，比如 [[http://eigen.tuxfamily.org/index.php?title=Main_Page][Eigen]] 、[[https://www.openblas.net/][OpenBLAS]]*
+可以根据需求自行安装。
+#+begin_src shell
+brew install eigen opencv lapack
+#+end_src
+3. 编译
+#+begin_src shell
+make -j4 USE_CPP_PACKAGE=1
+#+end_src

@@ -4,8 +4,17 @@
 其文件后缀一般是 /.http/ 或 /.rest/ 两种，不同的请求之间使用 /###/ 分隔。
 * 入门
 ** /cURL/ 方式
+*** GET
 #+BEGIN_SRC shell
-curl -X POST "http://example.com/api/v1/create" -d "Hello World"
+curl http://127.0.0.1:8080/login?user=admin&passwd=12345678
+#+END_SRC
+*** POST
+#+BEGIN_SRC shell
+curl -X POST "http://example.com/api/v1/create" -d "user=admin&passwd=12345678"
+#+END_SRC
+
+#+BEGIN_SRC shell
+curl -H "Content-Type:application/json" -X POST -d '{"user": "admin", "passwd":"12345678"}' http://127.0.0.1:8000/login
 #+END_SRC
 ** /RFC 2616/ 方式
 *** /GET/
