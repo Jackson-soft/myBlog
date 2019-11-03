@@ -3,7 +3,7 @@
 ** 前尘
 由于我的一个项目需要做公司用户鉴权，而组内其他小伙伴刚好有一个 /dubbo/ 的鉴权 /rpc/ ，一开始我是打算直接读 /redis/ 数据然后
 自己做解密。工作进行到一半，由于考虑到如果以后这个服务有任何变动，我这边要有联动行为，所以改用 /go/ 来调用 /dubbo/ 的 /rpc/ ，
-于是我在 /github/ 上找到了雨神的 [[https://github.com/AlexStocks/dubbogo][dubbogo]] (PS: 这个是 /dubbo-go/ 前身)。不得不说，雨神是热心的人儿啊，当时还帮着我调试代码
+于是我在 /github/ 上找到了 [[https://github.com/AlexStocks][雨神]] 的 [[https://github.com/AlexStocks/dubbogo][dubbogo]] (PS: 这个是 /dubbo-go/ 前身)。不得不说，雨神是热心的人儿啊，当时还帮着我调试代码
 。最后也是接入了一个阉割版的吧，主要是当时 /hessian2/ 对泛型支持的不怎么好。
 ** 现在
 目前 [[https://github.com/apache/dubbo-go][dubbo-go ]]隶属于 /apache/ 社区，相比以前做了部分重构，并且维护也很活跃了。
