@@ -10,6 +10,20 @@
 * 接入
 ** 问题
 目前整个项目在快速的迭代中，很多功能还没有完善，维护人员还没有时间来完善文档，所以在接入的时候要自己看源码或调试。
+** 说明
+目前我司在使用 /dubbo/ 的过程使用的 /zookeeper/ 作为注册中心，序列化是 /hessian2/ ，所以我们要做如下初始化：
+#+BEGIN_SRC go
+  import (
+      _ "github.com/apache/dubbo-go/common/proxy/proxy_factory"
+      _ "github.com/apache/dubbo-go/registry/protocol"
+
+      _ "github.com/apache/dubbo-go/filter/impl"
+
+      _ "github.com/apache/dubbo-go/cluster/cluster_impl"
+      _ "github.com/apache/dubbo-go/cluster/loadbalance"
+      _ "github.com/apache/dubbo-go/registry/zookeeper"
+  )
+#+END_SRC
 ** 配置
 由于我是接入客户端，所以我这边只配置了 /ConsumerConfig/ 。
 
