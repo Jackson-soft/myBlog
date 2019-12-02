@@ -1,0 +1,50 @@
+#+TITLE: /C++/ 的类结构
+* /RAII/
+* 构造函数
+** 基本构造函数
+** 委托构造函数
+构造函数可以在同一个类中一个构造函数调用另一个构造函数，从而达到简化代码的目的:
+#+BEGIN_SRC C++
+  class Base {
+  public:
+      Base() {
+          value1 = 1;
+      }
+
+      // 委托构造函数
+      Base(int vv): Base() {
+          value2 = vv;
+      }
+  private:
+      int value1;
+      int value2;
+  };
+#+END_SRC
+** 继承构造函数
+通过 /using/ 可以继承父类的构造函数。
+#+BEGIN_SRC c++
+  class SubBase : public Base {
+  public:
+      // 继承构造
+      using Base::Base;
+  }
+#+END_SRC
+* 显式虚函数重载
+** /override/
+当重载虚函数时，引入 /override/ 关键字将显式的告知编译器进行重载，编译器将检查基函数是否存在这样的虚函数，否则将无法通过编译:
+** /final/
+/final/ 则是为了防止类被继续继承以及终止虚函数继续重载引入的。
+* 显式禁用默认函数
+如果程序员没有提供，编译器会默认为对象生成默认构造函数、复制构造、赋值 算符以及析构函数。我们也可以显式的声明采用或拒绝
+编译器自带的函数。
+#+BEGIN_SRC c++
+  class Base {
+  public:
+      // 显式声明使用编译器生成的构造函数
+      Base() = default;
+
+      // 显式声明拒绝编译器生成的=操作符重载
+      Base& operator=(const Base&) = delete;
+  };
+#+END_SRC
+* 析构函数
