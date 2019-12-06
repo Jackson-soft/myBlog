@@ -1,0 +1,22 @@
+#+TITLE: /CMake/ 编译套餐
+* /CMake/
+** 基本用法
+#+BEGIN_SRC shell
+cmake -Bbuild -H. -DCMAKE_EXPORT_COMPILE_COMMANDS=YES
+#+END_SRC
+* /Ninja/
+[[https://ninja-build.org/][Ninja]] 是一个为速度而生的小型编译系统。但 /Ninja/ 是一种不太适合手工编写的构建系统。好在有很多 [[https://github.com/ninja-build/ninja/wiki/List-of-generators-producing-ninja-build-files][generator]] 工具可以用来自动生
+成 /.ninja/ 文件。 /CMake/ 生成命令：
+#+BEGIN_SRC shell
+cmake -GNinja
+#+END_SRC
+然后使用 /Ninja/ 编译：
+#+BEGIN_SRC shell
+ninja -C build -j 6
+#+END_SRC
+* /Ccache/
+[[https://ccache.dev/][Ccache]] 通过 /cache/ 上一次编译的结果，使 /rebuild/ 在保持结果相同的情况下，极大的提高速度。但这货有一个问题就是目前只支持
+/GCC/ 。在 /CMake/ 3.4 之后我可以可以添加如下命令用以使用 /ccache/ ：
+#+BEGIN_SRC shell
+cmake -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+#+END_SRC
