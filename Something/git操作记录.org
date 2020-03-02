@@ -1,0 +1,22 @@
+#+TITLE: /git/ 操作
+* 说明
+对日常一些 /git/ 操作的命令记录，以备不时之需。
+* 文件排除
+一般忽略某一些文件时可以在项目根目录添加 /.gitignore/ 文件做排除。
+添加文件时排除一个或几个不需要上传的文件：
+#+BEGIN_SRC shell
+git add --all -- ":!path/to/file1 :!path/to/file2 :!path/to/folder1/*"
+#+END_SRC
+* 暂存修改代码
+#+BEGIN_SRC shell
+git stash
+#+END_SRC
+
+恢复暂存代码
+#+BEGIN_SRC shell
+git stash pop
+#+END_SRC
+* 添加远程同步仓库
+#+BEGIN_SRC shell
+git remote add upstream https://github.com/qicosmos/cinatra.git
+#+END_SRC
