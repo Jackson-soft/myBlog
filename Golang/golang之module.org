@@ -81,7 +81,9 @@ google.golang.org/appengine v1.1.0 => github.com/golang/appengine v1.1.0
 
 ** go get
 基本命令格式：
+
 /go get [-d] [-f] [-t] [-u] [-v] [-fix] [-insecure] [build flags] [packages]/
+
 标志：
 + -d：在下载包之后停止；亦即，其令get不安装包。
 + -f：只在-u被设置时有效，强制get -u不验证每个包都是从其导入路径隐含的源代码控制仓库检出。如果源代码是源的本地fork分支这将会有用。
