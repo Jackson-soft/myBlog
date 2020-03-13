@@ -61,5 +61,34 @@ google.golang.org/appengine v1.1.0 => github.com/golang/appengine v1.1.0
 + 更新依赖关系
 可以使用命令 /go mod tidy/ 用来为 /go.mod/ 增加丢失的依赖，删除不需要的依赖。
 
++ 下载模块至本地缓存
+/go mod download [-json] [modules]/ 不带参数则应用于模块所有依赖。
+
+** 环境变量
+如果环境变量未设置，go命令使用一个合理的默认设置。要查看变量的有效设置，运行“go env ”。要修改默认设置，运行“go env -w =”。
+使用“go env -w”修改的默认值记录在存储在每个用户一个的配置目录中的Go环境变量配置文件中，该目录如同os.UserConfigDir所报告
+的。配置文件的位置可以通过设置环境变量GOENV修改，且“go env GOENV”打印有效的位置，但“go env -w”不能修改默认位置。详细信
+息参阅“go help env”。
+
+通用环境变量：
++ GOBIN: “go install”安装命令使用的目录。
++ GOPRIVATE：glob模式（以Go的path.Match的语法）的逗号分隔的列表，为应该总是直接获取或不应该与校验和数据库比较的模块路径
+  前缀。参阅“go help module-private”。
++ GONOPROXY：同GOPRIVATE。
++ GONOSUMDB：同GOPRIVATE。
++ GOSUMDB：使用的校验和数据库的名字，及可选地其公钥和URL。参阅“go help module-auth”。
++ GOTMPDIR：go命令写入临时源文件、包和二进制文件的目录。
+
+** go get
+基本命令格式：
+/go get [-d] [-f] [-t] [-u] [-v] [-fix] [-insecure] [build flags] [packages]/
+标志：
++ -d：在下载包之后停止；亦即，其令get不安装包。
++ -f：只在-u被设置时有效，强制get -u不验证每个包都是从其导入路径隐含的源代码控制仓库检出。如果源代码是源的本地fork分支这将会有用。
++ -fix：在解析依赖和构建代码之前在已下载的包上运行fix工具。
++ -insecure：允许使用如HTTP等不安全的方案，从仓库拉取以及解析自定义域名。谨慎使用。
++ -t：同时下载指定的包构建测试所需的包。
++ -u：使用网络来更新指定名字的包及其依赖。默认情况下，get使用网络来检出缺少的包但不会使用它来查找已存在包的更新。
++ -v：启用详细的进度和调试输出。
 ** 参考文档
    [[https://github.com/golang/go/wiki/Modules][Modules]]
