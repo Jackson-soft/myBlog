@@ -8,14 +8,15 @@
 
 下图大致表明插件系统的基本架构：
 
-[[file:plugin.jpg][plugin]]
+[[./plugin.jpg]]
 
 总体的指导性原则：“面向接口编程而不是实现编程”。
 * /go-micro/ 的插件系统
 /Go Micro/ 是一个可插拔的 /RPC/ 框架，并且把分布式系统的各种细节抽象出来，是一个非典型的插件系统的架构。
 
 总体架构：
-[[./plugin.jpg]]
+
+[[./go-micro.png]]
 ** *Service Interface*
 首先，我们看一下 /Service/ 的接口定义：
 #+BEGIN_SRC go
@@ -39,12 +40,31 @@
       once sync.Once
   }
 #+END_SRC
+而 /Service/ 提供服务依赖于 /Server/ 。接口如下：
+#+BEGIN_SRC go
+  // Server is a simple micro server abstraction
+  type Server interface {
+      Options() Options
+      Init(...Option) error
+      Handle(Handler) error
+      NewHandler(interface{}, ...HandlerOption) Handler
+      NewSubscriber(string, interface{}, ...SubscriberOption) Subscriber
+      Subscribe(Subscriber) error
+      Start() error
+      Stop() error
+      String() string
+  }
+#+END_SRC
 基本的调用程序如下：
 #+BEGIN_SRC dot :file ./invoke.png :cmdline -Kdot -Tpng
   digraph demo {
       graph [rankdir=LR,label="service调用关系"];
       node [shape=box];
-      NewService -> Init -> Run -> Start -> {Listen,Broker,Register,run};
+      Micro[shape=Mrecord,label="micro.NewService"];
+      Init[shape=ellipse,label="service.Init"];
+      Run[shape=ellipse,label="service.Run"];
+      Start[shape=diamond,label="server.Start"];
+      Micro -> Init -> Run -> Start -> {Listen,Broker,Register,run};
   }
 #+END_SRC
 
