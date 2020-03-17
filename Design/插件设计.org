@@ -1,11 +1,284 @@
 #+TITLE: 插件系统的设计
 * 架构
 1. 主程序如果希望自身的功能可以被扩展，其需要：
-   + 提供一组服务 (Service Interface)。其提供（约束）了插件对主体能力可控制的边界。服务定义的越精细，插件控制的粒度越小，能力越大，但耦合度和复杂度也越高。
-   + 定义一种扩展契约 (Plug-In Interface)，其描述了插件应该如何设计以便于主程序发现。并通过插件管理模块 (Plug-In Manager) 来发现、维护插件。
+   + 提供一组服务 (*Service Interface*)。其提供（约束）了插件对主体能力可控制的边界。服务定义的越精细，插件控制的粒度越小，能力越大，但耦合度和复杂度也越高。
+   + 定义一种扩展契约 (*Plug-In Interface*)，其描述了插件应该如何设计以便于主程序发现。并通过插件管理模块 (*Plug-In Manager*) 来发现、维护插件。
 2. 插件通过实现主程序规定的扩展契约（通常是一个接口），标明自己的身份，并接收来自主程序的事件响应。
-通过调动主程序提供的服务，实现和主程序的交互。这一过程，通常都是被主程序以 SDK (Software Development Kit) 的形式封装。
+通过调动主程序提供的服务，实现和主程序的交互。这一过程，通常都是被主程序以 /SDK/ (*Software Development Kit*) 的形式封装。
 
-[./plugin.jpg]
+下图大致表明插件系统的基本架构：
+
+[[file:plugin.jpg][plugin]]
+
+总体的指导性原则：“面向接口编程而不是实现编程”。
+* /go-micro/ 的插件系统
+/Go Micro/ 是一个可插拔的 /RPC/ 框架，并且把分布式系统的各种细节抽象出来，是一个非典型的插件系统的架构。
+
+总体架构：
+[[./plugin.jpg]]
+** *Service Interface*
+首先，我们看一下 /Service/ 的接口定义：
+#+BEGIN_SRC go
+  // Service is an interface that wraps the lower level libraries
+  // within go-micro. Its a convenience method for building
+  // and initialising services.
+  type Service interface {
+      Init(...Option)
+      Options() Options
+      Client() client.Client
+      Server() server.Server
+      Run() error
+      String() string
+  }
+#+END_SRC
+只要实现这个接口约定，就可以通过 /Go Micro/ 实现一个微服务。官方有一个默认的 /Service/ 的实现用以提供 /RPC/ 服务。
+#+BEGIN_SRC go
+  type service struct {
+      opts Options
+
+      once sync.Once
+  }
+#+END_SRC
+基本的调用程序如下：
+#+BEGIN_SRC dot :file ./invoke.png :cmdline -Kdot -Tpng
+  digraph demo {
+      graph [rankdir=LR,label="service调用关系"];
+      node [shape=box];
+      NewService -> Init -> Run -> Start -> {Listen,Broker,Register,run};
+  }
+#+END_SRC
+
+#+RESULTS:
+[[file:./invoke.png]]
+
+大致的代码流如下：
+ + 起手式：
+#+BEGIN_SRC go
+  func main() {
+      // Create a new service. Optionally include some options here.
+      service := micro.NewService(
+          micro.Name("greeter"),
+      )
+
+      // Init will parse the command line flags.
+      service.Init()
+
+      // Register handler
+      proto.RegisterGreeterHandler(service.Server(), new(Greeter))
+
+      // Run the server
+      if err := service.Run(); err != nil {
+          fmt.Println(err)
+      }
+  }
+#+END_SRC
+ + 准备：
+ #+BEGIN_SRC go
+   // NewService returns a grpc service compatible with go-micro.Service
+   func NewService(opts ...micro.Option) micro.Service {
+       // our grpc client
+       c := client.NewClient()
+       // our grpc server
+       s := server.NewServer()
+       // our grpc broker
+       b := broker.NewBroker() // 这个在新版本已被移除了
+
+       // create options with priority for our opts
+       options := []micro.Option{
+           micro.Client(c),
+           micro.Server(s),
+           micro.Broker(b),
+       }
+
+       // append passed in opts
+       options = append(options, opts...)
+
+       // generate and return a service
+       return micro.NewService(options...)
+   }
+ #+END_SRC
+ + /grpc/ 的配置式:
+#+BEGIN_SRC go
+  func (g *grpcServer) configure(opts ...server.Option) {
+      // Don't reprocess where there's no config
+      if len(opts) == 0 && g.srv != nil {
+          return
+      }
+
+      for _, o := range opts {
+          o(&g.opts)
+      }
+
+      maxMsgSize := g.getMaxMsgSize()
+
+      gopts := []grpc.ServerOption{
+          grpc.MaxRecvMsgSize(maxMsgSize),
+          grpc.MaxSendMsgSize(maxMsgSize),
+          grpc.UnknownServiceHandler(g.handler),
+      }
+
+      if creds := g.getCredentials(); creds != nil {
+          gopts = append(gopts, grpc.Creds(creds))
+      }
+
+      if opts := g.getGrpcOptions(); opts != nil {
+          gopts = append(gopts, opts...)
+      }
+
+      g.srv = grpc.NewServer(gopts...)
+  }
+
+#+END_SRC
+ + 杀招:
+ #+BEGIN_SRC go
+   func (g *grpcServer) Start() error {
+       registerDebugHandler(g)
+       config := g.opts
+
+       // micro: config.Transport.Listen(config.Address)
+       ts, err := net.Listen("tcp", config.Address)
+       if err != nil {
+           return err
+       }
+
+       log.Logf("Server [grpc] Listening on %s", ts.Addr().String())
+       g.Lock()
+       g.opts.Address = ts.Addr().String()
+       g.Unlock()
+
+       // connect to the broker
+       if err := config.Broker.Connect(); err != nil {
+           return err
+       }
+
+       log.Logf("Broker [%s] Listening on %s", config.Broker.String(), config.Broker.Address())
+
+       // announce self to the world
+       if err := g.Register(); err != nil {
+           log.Log("Server register error: ", err)
+       }
+
+       // micro: go ts.Accept(s.accept)
+       go func() {
+           if err := g.srv.Serve(ts); err != nil {
+               log.Log("gRPC Server start error: ", err)
+           }
+       }()
+
+       go func() {
+           t := new(time.Ticker)
+
+           // only process if it exists
+           if g.opts.RegisterInterval > time.Duration(0) {
+               // new ticker
+               t = time.NewTicker(g.opts.RegisterInterval)
+           }
+
+           // return error chan
+           var ch chan error
+
+       Loop:
+           for {
+               select {
+               // register self on interval
+               case <-t.C:
+                   if err := g.Register(); err != nil {
+                       log.Log("Server register error: ", err)
+                   }
+               // wait for exit
+               case ch = <-g.exit:
+                   break Loop
+               }
+           }
+
+           // deregister self
+           if err := g.Deregister(); err != nil {
+               log.Log("Server deregister error: ", err)
+           }
+
+           // Add sleep for those requests which have selected this port.
+           time.Sleep(DefaultSleepAfterDeregister)
+
+           // wait for waitgroup
+           if g.wg != nil {
+               g.wg.Wait()
+           }
+
+           // stop the grpc server
+           g.srv.GracefulStop()
+
+           // close transport
+           ch <- nil
+
+           // disconnect broker
+           config.Broker.Disconnect()
+       }()
+
+       return nil
+   }
+
+ #+END_SRC
+
+** /Plugin Interface/
+*** 接口
+#+BEGIN_SRC go
+  // Plugin is the interface for plugins to micro. It differs from go-micro in that it's for
+  // the micro API, Web, Sidecar, CLI. It's a method of building middleware for the HTTP side.
+  type Plugin interface {
+      // Global Flags
+      Flags() []cli.Flag
+      // Sub-commands
+      Commands() []*cli.Command
+      // Handle is the middleware handler for HTTP requests. We pass in
+      // the existing handler so it can be wrapped to create a call chain.
+      Handler() Handler
+      // Init called when command line args are parsed.
+      // The initialised cli.Context is passed in.
+      Init(*cli.Context) error
+      // Name of the plugin
+      String() string
+  }
+#+END_SRC
+*** /Plug-In Manager/
+有了插件接口，我们也需要配套的插件管理器：
+#+BEGIN_SRC go
+  // Manager is the plugin manager which stores plugins and allows them to be retrieved.
+  // This is used by all the components of micro.
+  type Manager interface {
+      Plugins() []Plugin
+      Register(Plugin) error
+  }
+#+END_SRC
+官方实现了基本版插件管理器：
+#+BEGIN_SRC go
+  type manager struct {
+      sync.Mutex
+      plugins    []Plugin
+      registered map[string]bool
+  }
+#+END_SRC
+插件操作接口:
+#+BEGIN_SRC go
+  // Register registers a global plugins
+  func Register(plugin Plugin) error {
+      return defaultManager.Register(plugin)
+  }
+
+  // NewManager creates a new plugin manager
+  func NewManager() Manager {
+      return newManager()
+  }
+#+END_SRC
+*** 使用
+直接调用 /Plugin/ 的 /Init(* cli.Context) error/ 接口就行了，命令行参数就在 /cli.Context/ 中带过来。在 /Go Micro/ 中插件感觉是独
+立于主服务的，就是自己提供服务就行了，与主服务没什么交流。
+** Hook
+在一般插件系统中有可能会涉及到 *Hook* (钩子)概念，有点像责任链模式。具体来说就是宿主程序一般会有一套事件分
+发机制，包括应用触发事件和后台逻辑处理，都是根据事件流程一步步地向下执行。 /Hook/ 的意思，就是在事件
+传送到终点前截获并监控事件的传输，像个钩子钩上事件一样，并且能够在钩上事件时，处理一些自己特定的事件。这样
+就完成插件的扩展特性。
+
+比如一般的编辑器插件什么的，会监听一些编辑事件啊这种， /Go Micro/ 中没有涉及 /Hook/ 这块内容。
 * 文档
 + [[https://en.wikipedia.org/wiki/Plug-in_(computing)][Plug-in]]
++ [[https://micro.mu/docs/index.html][Docs | Micro]]
