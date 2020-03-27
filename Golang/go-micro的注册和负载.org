@@ -1,0 +1,546 @@
+#+TITLE: /go-micro/ 的服务注册与负载均衡
+* 服务注册
+** 流程
+#+BEGIN_SRC dot :file ./registry.png :cmdline -Kdot -Tpng
+  digraph {
+      graph [rankdir=LR,label="注册流程"];
+      Server [label="server.Start()"];
+      Register [shape=box,label="grpc.Register()"];
+      Ticker [shape=box,label="time.Ticker()"];
+      Register1 [shape=box,label="grpc.Register()"];
+
+      Register2 [shape=box,label="grpc.opts.Registry.Register()"];
+      RegisterNode [shape=box,label="grpc.opts.Registry.registerNode()"];
+
+      Server -> {Register,Ticker};
+      Register -> Register2 -> RegisterNode;
+      Ticker -> Register1;
+  }
+#+END_SRC
+
+#+RESULTS:
+[[file:./registry.png]]
+
+** 数据结构
+#+BEGIN_SRC go
+  type Service struct {
+      Name      string            `json:"name"`
+      Version   string            `json:"version"`
+      Metadata  map[string]string `json:"metadata"`
+      Endpoints []*Endpoint       `json:"endpoints"`
+      Nodes     []*Node           `json:"nodes"`
+  }
+
+  type Node struct {
+      Id       string            `json:"id"`
+      Address  string            `json:"address"`
+      Metadata map[string]string `json:"metadata"`
+  }
+
+  type Endpoint struct {
+      Name     string            `json:"name"`
+      Request  *Value            `json:"request"`
+      Response *Value            `json:"response"`
+      Metadata map[string]string `json:"metadata"`
+  }
+
+  type Value struct {
+      Name   string   `json:"name"`
+      Type   string   `json:"type"`
+      Values []*Value `json:"values"`
+  }
+
+#+END_SRC
+** 注册的接口
+#+BEGIN_SRC go
+  type Registry interface {
+      Init(...Option) error
+      Options() Options
+      Register(*Service, ...RegisterOption) error
+      Deregister(*Service) error
+      GetService(string) ([]*Service, error)
+      ListServices() ([]*Service, error)
+      Watch(...WatchOption) (Watcher, error)
+      String() string
+  }
+#+END_SRC
+
+#+BEGIN_SRC go
+  func (e *etcdRegistry) Register(s *registry.Service, opts ...registry.RegisterOption) error {
+      if len(s.Nodes) == 0 {
+          return errors.New("Require at least one node")
+      }
+
+      var gerr error
+
+      // 迷之写法，而且在 registerNode 中 hash 的也是node，而不是全量
+      // register each node individually
+      for _, node := range s.Nodes {
+          err := e.registerNode(s, node, opts...)
+          if err != nil {
+              gerr = err
+          }
+      }
+
+      return gerr
+  }
+
+#+END_SRC
+
+/Etcd/ 注册的最主要的代码是 /registerNode/ :
+#+BEGIN_SRC go
+  func (e *etcdRegistry) registerNode(s *registry.Service, node *registry.Node, opts ...registry.RegisterOption) error {
+      if len(s.Nodes) == 0 {
+          return errors.New("Require at least one node")
+      }
+
+      // check existing lease cache
+      e.RLock()
+      leaseID, ok := e.leases[s.Name+node.Id]
+      e.RUnlock()
+
+      if !ok {
+          // missing lease, check if the key exists
+          ctx, cancel := context.WithTimeout(context.Background(), e.options.Timeout)
+          defer cancel()
+
+          // look for the existing key
+          rsp, err := e.client.Get(ctx, nodePath(s.Name, node.Id), clientv3.WithSerializable())
+          if err != nil {
+              return err
+          }
+
+          // 这里感觉少点东西
+
+          // get the existing lease
+          for _, kv := range rsp.Kvs {
+              if kv.Lease > 0 {
+                  leaseID = clientv3.LeaseID(kv.Lease)
+
+                  // decode the existing node
+                  srv := decode(kv.Value)
+                  if srv == nil || len(srv.Nodes) == 0 {
+                      continue
+                  }
+
+                  // create hash of service; uint64
+                  h, err := hash.Hash(srv.Nodes[0], nil)
+                  if err != nil {
+                      continue
+                  }
+
+                  // save the info
+                  e.Lock()
+                  e.leases[s.Name+node.Id] = leaseID
+                  e.register[s.Name+node.Id] = h
+                  e.Unlock()
+
+                  break
+              }
+          }
+      }
+
+      var leaseNotFound bool
+
+      // renew the lease if it exists
+      if leaseID > 0 {
+          if logger.V(logger.TraceLevel, logger.DefaultLogger) {
+              logger.Tracef("Renewing existing lease for %s %d", s.Name, leaseID)
+          }
+          // 续租一次
+          if _, err := e.client.KeepAliveOnce(context.TODO(), leaseID); err != nil {
+              if err != rpctypes.ErrLeaseNotFound {
+                  return err
+              }
+
+              if logger.V(logger.TraceLevel, logger.DefaultLogger) {
+                  logger.Tracef("Lease not found for %s %d", s.Name, leaseID)
+              }
+              // lease not found do register
+              leaseNotFound = true
+          }
+      }
+
+      // create hash of service; uint64
+      h, err := hash.Hash(node, nil)
+      if err != nil {
+          return err
+      }
+
+      // get existing hash for the service node
+      e.Lock()
+      v, ok := e.register[s.Name+node.Id]
+      e.Unlock()
+
+      // the service is unchanged, skip registering
+      if ok && v == h && !leaseNotFound {
+          if logger.V(logger.TraceLevel, logger.DefaultLogger) {
+              logger.Tracef("Service %s node %s unchanged skipping registration", s.Name, node.Id)
+          }
+          return nil
+      }
+
+      service := &registry.Service{
+          Name:      s.Name,
+          Version:   s.Version,
+          Metadata:  s.Metadata,
+          Endpoints: s.Endpoints,
+          Nodes:     []*registry.Node{node},
+      }
+
+      var options registry.RegisterOptions
+      for _, o := range opts {
+          o(&options)
+      }
+
+      ctx, cancel := context.WithTimeout(context.Background(), e.options.Timeout)
+      defer cancel()
+
+      var lgr *clientv3.LeaseGrantResponse
+      if options.TTL.Seconds() > 0 {
+          // get a lease used to expire keys since we have a ttl
+          lgr, err = e.client.Grant(ctx, int64(options.TTL.Seconds()))
+          if err != nil {
+              return err
+          }
+      }
+
+      if logger.V(logger.TraceLevel, logger.DefaultLogger) {
+          logger.Tracef("Registering %s id %s with lease %v and leaseID %v and ttl %v", service.Name, node.Id, lgr, lgr.ID, options.TTL)
+      }
+      // create an entry for the node
+      if lgr != nil {
+          _, err = e.client.Put(ctx, nodePath(service.Name, node.Id), encode(service), clientv3.WithLease(lgr.ID))
+      } else {
+          _, err = e.client.Put(ctx, nodePath(service.Name, node.Id), encode(service))
+      }
+      if err != nil {
+          return err
+      }
+
+      e.Lock()
+      // save our hash of the service
+      e.register[s.Name+node.Id] = h
+      // save our leaseID of the service
+      if lgr != nil {
+          e.leases[s.Name+node.Id] = lgr.ID
+      }
+      e.Unlock()
+
+      return nil
+  }
+
+#+END_SRC
+
+这里我们看到在调 /etcd.get/ 的时候用了 /clientv3.WithSerializable()/  这个 /option/ 。官方对这个操作的解释如下：
+#+BEGIN_SRC go
+  // WithSerializable makes 'Get' request serializable. By default,
+  // it's linearizable. Serializable requests are better for lower latency
+  // requirement.
+  func WithSerializable() OpOption {
+      return func(op *Op) { op.serializable = true }
+  }
+#+END_SRC
+
+为了一致性，线性化(Linearizable)读取请求要通过集群成员的法定人数来获取最新的数据。
+
+串行化(Serializable)读取请求比线性化读取要廉价一些，因为他们是通过任意单台 /etcd/ 服务器来提供服务，而不是成员的法定人数，
+代价是可能提供过期数据。
+
+/etcd/ 在不同模式下读取的性能如下：
+
+[[./etcd_get.png]]
+
+**  /Watcher/
+/Watcher/ 是属于配套设施。
+#+BEGIN_SRC go
+  // Watcher is an interface that returns updates
+  // about services within the registry.
+  type Watcher interface {
+      // Next is a blocking call
+      Next() (*Result, error)
+      Stop()
+  }
+#+END_SRC
+/Watcher/ 在 /cache/ 中用来保持数据健康度的。
+* 负载均衡
+** 选择器接口
+#+BEGIN_SRC go
+    // Selector builds on the registry as a mechanism to pick nodes
+    // and mark their status. This allows host pools and other things
+    // to be built using various algorithms.
+    type Selector interface {
+        Init(opts ...Option) error
+        Options() Options
+        // Select returns a function which should return the next node
+        Select(service string, opts ...SelectOption) (Next, error)
+        // Mark sets the success/error against a node
+        Mark(service string, node *registry.Node, err error)
+        // Reset returns state back to zero for a service
+        Reset(service string)
+        // Close renders the selector unusable
+        Close() error
+        // Name of the selector
+        String() string
+    }
+
+#+END_SRC
+** 调用流程
+#+BEGIN_SRC dot :file ./selector.png :cmdline -Kdot -Tpng
+  digraph demo {
+      graph [rankdir=LR,label="客户端服务选择流程"];
+      node [shape=box];
+      subgraph cluster_client {
+          label="服务选择的初始化";
+          NewService [label="grpc.NewService(micro.Registry(reg))"];
+          Registry [label="micro.Registry()"];
+          Init [label="registrySelector.Init()"];
+
+          NewService -> Registry -> Init;
+      }
+
+      subgraph cluster_rpc {
+          label="服务选择的过程";
+          node [color=Red];
+          Call [label="grpcClient.Call()"];
+          Next [label="grpcClient.next()"]
+          Select [label="Selector.Select()"];
+          GetService [label="cache.GetService()"];
+          Get [label="cache.get()"];
+          rpc -> Call -> Next -> Select -> GetService -> Get;
+      }
+  }
+#+END_SRC
+
+#+RESULTS:
+[[file:./selector.png]]
+
+** 代码
+*** 创建
+#+BEGIN_SRC go
+  reg := etcdv3.NewRegistry(func(op *registry.Options) {
+      op.Addrs = []string{
+          "http://10.3.7.2:2379",
+      }
+  })
+
+  service := grpc.NewService(micro.Registry(reg))
+
+  service.Init()
+#+END_SRC
+
+注册选择器
+#+BEGIN_SRC go
+  // Registry sets the registry for the service
+  // and the underlying components
+  func Registry(r registry.Registry) Option {
+      return func(o *Options) {
+          o.Registry = r
+          // Update Client and Server
+          o.Client.Init(client.Registry(r))
+          o.Server.Init(server.Registry(r))
+          // Update Selector
+          o.Client.Options().Selector.Init(selector.Registry(r))
+          // Update Broker
+          o.Broker.Init(broker.Registry(r))
+      }
+  }
+#+END_SRC
+*** 初始化
+#+BEGIN_SRC go
+  type registrySelector struct {
+      so Options
+      rc cache.Cache
+  }
+
+  func (c *registrySelector) newCache() cache.Cache {
+      ropts := []cache.Option{}
+      if c.so.Context != nil {
+          if t, ok := c.so.Context.Value("selector_ttl").(time.Duration); ok {
+              ropts = append(ropts, cache.WithTTL(t))
+          }
+      }
+      return cache.New(c.so.Registry, ropts...)
+  }
+
+  func (c *registrySelector) Init(opts ...Option) error {
+      for _, o := range opts {
+          o(&c.so)
+      }
+
+      c.rc.Stop()
+      c.rc = c.newCache()
+
+      return nil
+  }
+
+#+END_SRC
+***  /rpc/
+#+BEGIN_SRC go
+  func (c *proxyService) Invoke(ctx context.Context, in *api.Request, opts ...client.CallOption) (*api.Response, error) {
+      req := c.c.NewRequest(c.name, "ProxyService.Invoke", in)
+      out := new(api.Response)
+      err := c.c.Call(ctx, req, out, opts...)
+      if err != nil {
+          return nil, err
+      }
+      return out, nil
+  }
+#+END_SRC
+*** /Call/
+#+BEGIN_SRC go
+  func (g *grpcClient) Call(ctx context.Context, req client.Request, rsp interface{}, opts ...client.CallOption) error {
+      if req == nil {
+          return errors.InternalServerError("go.micro.client", "req is nil")
+      } else if rsp == nil {
+          return errors.InternalServerError("go.micro.client", "rsp is nil")
+      }
+      // make a copy of call opts
+      callOpts := g.opts.CallOptions
+      for _, opt := range opts {
+          opt(&callOpts)
+      }
+
+      next, err := g.next(req, callOpts)
+      if err != nil {
+          return err
+      }
+
+      // check if we already have a deadline
+      d, ok := ctx.Deadline()
+      if !ok {
+          // no deadline so we create a new one
+          var cancel context.CancelFunc
+          ctx, cancel = context.WithTimeout(ctx, callOpts.RequestTimeout)
+          defer cancel()
+      } else {
+          // got a deadline so no need to setup context
+          // but we need to set the timeout we pass along
+          opt := client.WithRequestTimeout(time.Until(d))
+          opt(&callOpts)
+      }
+
+      // should we noop right here?
+      select {
+      case <-ctx.Done():
+          return errors.New("go.micro.client", fmt.Sprintf("%v", ctx.Err()), 408)
+      default:
+      }
+
+      // make copy of call method
+      gcall := g.call
+
+      // wrap the call in reverse
+      for i := len(callOpts.CallWrappers); i > 0; i-- {
+          gcall = callOpts.CallWrappers[i-1](gcall)
+      }
+
+      // return errors.New("go.micro.client", "request timeout", 408)
+      call := func(i int) error {
+          // call backoff first. Someone may want an initial start delay
+          t, err := callOpts.Backoff(ctx, req, i)
+          if err != nil {
+              return errors.InternalServerError("go.micro.client", err.Error())
+          }
+
+          // only sleep if greater than 0
+          if t.Seconds() > 0 {
+              time.Sleep(t)
+          }
+
+          // select next node
+          node, err := next()
+          service := req.Service()
+          if err != nil {
+              if err == selector.ErrNotFound {
+                  return errors.InternalServerError("go.micro.client", "service %s: %s", service, err.Error())
+              }
+              return errors.InternalServerError("go.micro.client", "error selecting %s node: %s", service, err.Error())
+          }
+
+          // make the call
+          err = gcall(ctx, node, req, rsp, callOpts)
+          g.opts.Selector.Mark(service, node, err)
+          if verr, ok := err.(*errors.Error); ok {
+              return verr
+          }
+
+          return err
+      }
+
+      ch := make(chan error, callOpts.Retries+1)
+      var gerr error
+
+      for i := 0; i <= callOpts.Retries; i++ {
+          go func(i int) {
+              ch <- call(i)
+          }(i)
+
+          select {
+          case <-ctx.Done():
+              return errors.New("go.micro.client", fmt.Sprintf("%v", ctx.Err()), 408)
+          case err := <-ch:
+              // if the call succeeded lets bail early
+              if err == nil {
+                  return nil
+              }
+
+              retry, rerr := callOpts.Retry(ctx, req, i, err)
+              if rerr != nil {
+                  return rerr
+              }
+
+              if !retry {
+                  return err
+              }
+
+              gerr = err
+          }
+      }
+
+      return gerr
+  }
+
+#+END_SRC
+*** /next/
+#+BEGIN_SRC go
+  func (g *grpcClient) next(request client.Request, opts client.CallOptions) (selector.Next, error) {
+      service := request.Service()
+
+      // get proxy
+      if prx := os.Getenv("MICRO_PROXY"); len(prx) > 0 {
+          // default name
+          if prx == "service" {
+              prx = "go.micro.proxy"
+          }
+          service = prx
+      }
+
+      // get proxy address
+      if prx := os.Getenv("MICRO_PROXY_ADDRESS"); len(prx) > 0 {
+          opts.Address = []string{prx}
+      }
+
+      // return remote address
+      if len(opts.Address) > 0 {
+          return func() (*registry.Node, error) {
+              return &registry.Node{
+                  Address: opts.Address[0],
+              }, nil
+          }, nil
+      }
+
+      // get next nodes from the selector
+      next, err := g.opts.Selector.Select(service, opts.SelectOptions...)
+      if err != nil {
+          if err == selector.ErrNotFound {
+              return nil, errors.InternalServerError("go.micro.client", "service %s: %s", service, err.Error())
+          }
+          return nil, errors.InternalServerError("go.micro.client", "error selecting %s node: %s", service, err.Error())
+      }
+
+      return next, nil
+  }
+
+#+END_SRC
+至此，服务选择就结束了。

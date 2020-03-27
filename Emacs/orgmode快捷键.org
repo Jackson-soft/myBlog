@@ -1,0 +1,6 @@
+#+TITLE: /Org-Mode/ 快捷键
+* 基本
+* 文档
++ [[https://orgmode.org/][Org mode for Emacs &#x2013; Your Life in Plain Text]]
++ [[https://orgmode.org/worg/orgcard.html][Org-Mode Reference Card]]
++ [[https://orgmode.org/worg/org-tutorials/][Org tutorials]]
