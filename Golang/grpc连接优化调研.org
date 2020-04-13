@@ -1,0 +1,503 @@
+#+TITLE: /grpc/ 连接池
+* /grpc/ 的一些参数说明
+** /keepalive/ 当连接空闲时仍然发送PING帧监测
+#+BEGIN_SRC go
+      // If true, client sends keepalive pings even with no active RPCs. If false,
+      // when there are no active RPCs, Time and Timeout will be ignored and no
+      // keepalive pings will be sent.
+      PermitWithoutStream bool // false by default.
+#+END_SRC
+这个参数如果不设置的话，看注释是 /keepalive/ 的超时时间设置是形同虚设的。而且是 /server/ 和  /client/ 各一个。
+** 基于Stream的滑动窗口，类似于TCP的滑动窗口，用来做流控
+#+BEGIN_SRC go
+  // InitialWindowSize returns a ServerOption that sets window size for stream.
+  // The lower bound for window size is 64K and any value smaller than that will be ignored.
+  func InitialWindowSize(s int32) ServerOption {
+      return newFuncServerOption(func(o *serverOptions) {
+          o.initialWindowSize = s
+      })
+  }
+#+END_SRC
+** 基于Connection的滑动窗口
+#+BEGIN_SRC go
+  // InitialConnWindowSize returns a ServerOption that sets window size for a connection.
+  // The lower bound for window size is 64K and any value smaller than that will be ignored.
+  func InitialConnWindowSize(s int32) ServerOption {
+      return newFuncServerOption(func(o *serverOptions) {
+          o.initialConnWindowSize = s
+      })
+  }
+#+END_SRC
+* 客户端实现
+** 调用链路
+** 调用
+#+BEGIN_SRC go
+  func invoke(ctx context.Context, method string, req, reply interface{}, cc *ClientConn, opts ...CallOption) error {
+      cs, err := newClientStream(ctx, unaryStreamDesc, cc, method, opts...)
+      if err != nil {
+          return err
+      }
+      if err := cs.SendMsg(req); err != nil {
+          return err
+      }
+      return cs.RecvMsg(reply)
+  }
+#+END_SRC
++ newClientStream：获取传输层 Trasport 并组合封装到 ClientStream 中返回，在这块会涉及负载均衡、超时控制、 Encoding、 Stream 的动作。
++ cs.SendMsg：发送 RPC 请求出去，但其并不承担等待响应的功能。
++ cs.RecvMsg：阻塞等待接受到的 RPC 方法响应结果。
+** /ClientConn/
+ClientConn 对象是连接管理的入口，表示到服务端的一个逻辑的连接，会做名字解析(/DNS resolver/)、负载均衡、KeepAlive 等连接管理方面的操作，是个线程安全的对象。
+
+每个 ClientConn 对应有多个 SubConn，ClientConn 会基于名字发现（resolver）得到多个 SubConn，并面向多个 SubConn 之间实现负
+载均衡（balancer）。
+
+结构体如下：
+#+BEGIN_SRC go
+  // ClientConn represents a virtual connection to a conceptual endpoint, to
+  // perform RPCs.
+  //
+  // A ClientConn is free to have zero or more actual connections to the endpoint
+  // based on configuration, load, etc. It is also free to determine which actual
+  // endpoints to use and may change it every RPC, permitting client-side load
+  // balancing.
+  //
+  // A ClientConn encapsulates a range of functionality including name
+  // resolution, TCP connection establishment (with retries and backoff) and TLS
+  // handshakes. It also handles errors on established connections by
+  // re-resolving the name and reconnecting.
+  type ClientConn struct {
+      ctx    context.Context
+      cancel context.CancelFunc
+
+      target       string
+      parsedTarget resolver.Target
+      authority    string
+      dopts        dialOptions
+      csMgr        *connectivityStateManager // 总体的连接状态
+
+      balancerBuildOpts balancer.BuildOptions
+      blockingpicker    *pickerWrapper  // 从连接池中选择一个连接
+
+      mu              sync.RWMutex
+      resolverWrapper *ccResolverWrapper  // 服务端地址解析模块，默认 dnsResolver
+      sc              *ServiceConfig
+      conns           map[*addrConn]struct{}  // 多个 addrConn 客户端到一个服务端的一条连接
+      // Keepalive parameter can be updated if a GoAway is received.
+      mkp             keepalive.ClientParameters
+      curBalancerName string
+      balancerWrapper *ccBalancerWrapper  // 负载均衡模块，默认 roundrobin
+      retryThrottler  atomic.Value
+
+      firstResolveEvent *grpcsync.Event
+
+      channelzID int64 // channelz unique identification number
+      czData     *channelzData
+  }
+
+#+END_SRC
+** /Transport/
+#+BEGIN_SRC go
+  func (cc *ClientConn) getTransport(ctx context.Context, failfast bool, method string) (transport.ClientTransport, func(balancer.DoneInfo), error) {
+      t, done, err := cc.blockingpicker.pick(ctx, failfast, balancer.PickInfo{
+          Ctx:            ctx,
+          FullMethodName: method,
+      })
+      if err != nil {
+          return nil, nil, toRPCErr(err)
+      }
+      return t, done, nil
+  }
+#+END_SRC
+ClientTransport is the common interface for all gRPC client-side transport implementations.
+** /http2pClient/
+#+BEGIN_SRC go
+  // http2Client implements the ClientTransport interface with HTTP2.
+
+  func newHTTP2Client(connectCtx, ctx context.Context, addr TargetInfo, opts ConnectOptions, onPrefaceReceipt func(), onGoAway func(GoAwayReason), onClose func()) (_ *http2Client, err error) {
+      scheme := "http"
+      ctx, cancel := context.WithCancel(ctx)
+      defer func() {
+          if err != nil {
+              cancel()
+          }
+      }()
+
+      conn, err := dial(connectCtx, opts.Dialer, addr.Addr)
+      if err != nil {
+          if opts.FailOnNonTempDialError {
+              return nil, connectionErrorf(isTemporary(err), err, "transport: error while dialing: %v", err)
+          }
+          return nil, connectionErrorf(true, err, "transport: Error while dialing %v", err)
+      }
+      // Any further errors will close the underlying connection
+      defer func(conn net.Conn) {
+          if err != nil {
+              conn.Close()
+          }
+      }(conn)
+      kp := opts.KeepaliveParams
+      // Validate keepalive parameters.
+      if kp.Time == 0 {
+          kp.Time = defaultClientKeepaliveTime
+      }
+      if kp.Timeout == 0 {
+          kp.Timeout = defaultClientKeepaliveTimeout
+      }
+      keepaliveEnabled := false
+      if kp.Time != infinity {
+          if err = syscall.SetTCPUserTimeout(conn, kp.Timeout); err != nil {
+              return nil, connectionErrorf(false, err, "transport: failed to set TCP_USER_TIMEOUT: %v", err)
+          }
+          keepaliveEnabled = true
+      }
+      // 这里我们可以看到，如果 KeepaliveParams 不设置的话， keepalive 是不启用的。
+      // 还有就是 PermitWithoutStream 竟然压根没用，一脸懵逼，前面注释写的效果呢？
+
+      var (
+          isSecure bool
+          authInfo credentials.AuthInfo
+      )
+      transportCreds := opts.TransportCredentials
+      perRPCCreds := opts.PerRPCCredentials
+
+      if b := opts.CredsBundle; b != nil {
+          if t := b.TransportCredentials(); t != nil {
+              transportCreds = t
+          }
+          if t := b.PerRPCCredentials(); t != nil {
+              perRPCCreds = append(perRPCCreds, t)
+          }
+      }
+      if transportCreds != nil {
+          scheme = "https"
+          conn, authInfo, err = transportCreds.ClientHandshake(connectCtx, addr.Authority, conn)
+          if err != nil {
+              return nil, connectionErrorf(isTemporary(err), err, "transport: authentication handshake failed: %v", err)
+          }
+          isSecure = true
+      }
+      dynamicWindow := true
+      icwz := int32(initialWindowSize)
+
+      // 滑动窗口有点迷，默认大小是64K竟然也不会动态窗口
+      if opts.InitialConnWindowSize >= defaultWindowSize {
+          icwz = opts.InitialConnWindowSize
+          dynamicWindow = false
+      }
+      writeBufSize := opts.WriteBufferSize
+      readBufSize := opts.ReadBufferSize
+      maxHeaderListSize := defaultClientMaxHeaderListSize
+      if opts.MaxHeaderListSize != nil {
+          maxHeaderListSize = *opts.MaxHeaderListSize
+      }
+      t := &http2Client{
+          ctx:                   ctx,
+          ctxDone:               ctx.Done(), // Cache Done chan.
+          cancel:                cancel,
+          userAgent:             opts.UserAgent,
+          md:                    addr.Metadata,
+          conn:                  conn,
+          remoteAddr:            conn.RemoteAddr(),
+          localAddr:             conn.LocalAddr(),
+          authInfo:              authInfo,
+          readerDone:            make(chan struct{}),
+          writerDone:            make(chan struct{}),
+          goAway:                make(chan struct{}),
+          framer:                newFramer(conn, writeBufSize, readBufSize, maxHeaderListSize),
+          fc:                    &trInFlow{limit: uint32(icwz)},
+          scheme:                scheme,
+          activeStreams:         make(map[uint32]*Stream),
+          isSecure:              isSecure,
+          perRPCCreds:           perRPCCreds,
+          kp:                    kp,
+          statsHandler:          opts.StatsHandler,
+          initialWindowSize:     initialWindowSize,
+          onPrefaceReceipt:      onPrefaceReceipt,
+          nextID:                1,
+          maxConcurrentStreams:  defaultMaxStreamsClient,  //这里 client 有个默认值 100
+          streamQuota:           defaultMaxStreamsClient,
+          streamsQuotaAvailable: make(chan struct{}, 1),
+          czData:                new(channelzData),
+          onGoAway:              onGoAway,
+          onClose:               onClose,
+          keepaliveEnabled:      keepaliveEnabled,
+          bufferPool:            newBufferPool(),
+      }
+      t.controlBuf = newControlBuffer(t.ctxDone)
+      if opts.InitialWindowSize >= defaultWindowSize {
+          t.initialWindowSize = opts.InitialWindowSize
+          dynamicWindow = false
+      }
+      if dynamicWindow {
+          t.bdpEst = &bdpEstimator{
+              bdp:               initialWindowSize,
+              updateFlowControl: t.updateFlowControl,
+          }
+      }
+      if t.statsHandler != nil {
+          t.ctx = t.statsHandler.TagConn(t.ctx, &stats.ConnTagInfo{
+              RemoteAddr: t.remoteAddr,
+              LocalAddr:  t.localAddr,
+          })
+          connBegin := &stats.ConnBegin{
+              Client: true,
+          }
+          t.statsHandler.HandleConn(t.ctx, connBegin)
+      }
+      if channelz.IsOn() {
+          t.channelzID = channelz.RegisterNormalSocket(t, opts.ChannelzParentID, fmt.Sprintf("%s -> %s", t.localAddr, t.remoteAddr))
+      }
+      if t.keepaliveEnabled {
+          t.kpDormancyCond = sync.NewCond(&t.mu)
+          go t.keepalive()
+      }
+      // Start the reader goroutine for incoming message. Each transport has
+      // a dedicated goroutine which reads HTTP2 frame from network. Then it
+      // dispatches the frame to the corresponding stream entity.
+      go t.reader()
+
+      // Send connection preface to server.
+      n, err := t.conn.Write(clientPreface)
+      if err != nil {
+          t.Close()
+          return nil, connectionErrorf(true, err, "transport: failed to write client preface: %v", err)
+      }
+      if n != len(clientPreface) {
+          t.Close()
+          return nil, connectionErrorf(true, err, "transport: preface mismatch, wrote %d bytes; want %d", n, len(clientPreface))
+      }
+      var ss []http2.Setting
+
+      if t.initialWindowSize != defaultWindowSize {
+          ss = append(ss, http2.Setting{
+              ID:  http2.SettingInitialWindowSize,
+              Val: uint32(t.initialWindowSize),
+          })
+      }
+      if opts.MaxHeaderListSize != nil {
+          ss = append(ss, http2.Setting{
+              ID:  http2.SettingMaxHeaderListSize,
+              Val: *opts.MaxHeaderListSize,
+          })
+      }
+      err = t.framer.fr.WriteSettings(ss...)
+      if err != nil {
+          t.Close()
+          return nil, connectionErrorf(true, err, "transport: failed to write initial settings frame: %v", err)
+      }
+      // Adjust the connection flow control window if needed.
+      if delta := uint32(icwz - defaultWindowSize); delta > 0 {
+          if err := t.framer.fr.WriteWindowUpdate(0, delta); err != nil {
+              t.Close()
+              return nil, connectionErrorf(true, err, "transport: failed to write window update: %v", err)
+          }
+      }
+
+      t.connectionID = atomic.AddUint64(&clientConnectionCounter, 1)
+
+      if err := t.framer.writer.Flush(); err != nil {
+          return nil, err
+      }
+      go func() {
+          t.loopy = newLoopyWriter(clientSide, t.framer, t.controlBuf, t.bdpEst)
+          err := t.loopy.run()
+          if err != nil {
+              errorf("transport: loopyWriter.run returning. Err: %v", err)
+          }
+          // If it's a connection error, let reader goroutine handle it
+          // since there might be data in the buffers.
+          if _, ok := err.(net.Error); !ok {
+              t.conn.Close()
+          }
+          close(t.writerDone)
+      }()
+      return t, nil
+  }
+#+END_SRC
+* 服务端实现
+** /http2Server/
+#+BEGIN_SRC go
+  // newHTTP2Server constructs a ServerTransport based on HTTP2. ConnectionError is
+  // returned if something goes wrong.
+  func newHTTP2Server(conn net.Conn, config *ServerConfig) (_ ServerTransport, err error) {
+      writeBufSize := config.WriteBufferSize
+      readBufSize := config.ReadBufferSize
+      maxHeaderListSize := defaultServerMaxHeaderListSize
+      if config.MaxHeaderListSize != nil {
+          maxHeaderListSize = *config.MaxHeaderListSize
+      }
+      framer := newFramer(conn, writeBufSize, readBufSize, maxHeaderListSize)
+      // Send initial settings as connection preface to client.
+      isettings := []http2.Setting{{
+          ID:  http2.SettingMaxFrameSize,
+          Val: http2MaxFrameLen,
+      }}
+      // TODO(zhaoq): Have a better way to signal "no limit" because 0 is
+      // permitted in the HTTP2 spec.
+
+      // 服务端实现这里我们 MaxConcurrentStreams 如果不传值的话，会有一个默认值 4294967295
+      maxStreams := config.MaxStreams
+      if maxStreams == 0 {
+          maxStreams = math.MaxUint32
+      } else {
+          isettings = append(isettings, http2.Setting{
+              ID:  http2.SettingMaxConcurrentStreams,
+              Val: maxStreams,
+          })
+      }
+      dynamicWindow := true
+      iwz := int32(initialWindowSize)
+      if config.InitialWindowSize >= defaultWindowSize {
+          iwz = config.InitialWindowSize
+          dynamicWindow = false
+      }
+      icwz := int32(initialWindowSize)
+      if config.InitialConnWindowSize >= defaultWindowSize {
+          icwz = config.InitialConnWindowSize
+          dynamicWindow = false
+      }
+      if iwz != defaultWindowSize {
+          isettings = append(isettings, http2.Setting{
+              ID:  http2.SettingInitialWindowSize,
+              Val: uint32(iwz)})
+      }
+      if config.MaxHeaderListSize != nil {
+          isettings = append(isettings, http2.Setting{
+              ID:  http2.SettingMaxHeaderListSize,
+              Val: *config.MaxHeaderListSize,
+          })
+      }
+      if config.HeaderTableSize != nil {
+          isettings = append(isettings, http2.Setting{
+              ID:  http2.SettingHeaderTableSize,
+              Val: *config.HeaderTableSize,
+          })
+      }
+      if err := framer.fr.WriteSettings(isettings...); err != nil {
+          return nil, connectionErrorf(false, err, "transport: %v", err)
+      }
+      // Adjust the connection flow control window if needed.
+      if delta := uint32(icwz - defaultWindowSize); delta > 0 {
+          if err := framer.fr.WriteWindowUpdate(0, delta); err != nil {
+              return nil, connectionErrorf(false, err, "transport: %v", err)
+          }
+      }
+      kp := config.KeepaliveParams
+      if kp.MaxConnectionIdle == 0 {
+          kp.MaxConnectionIdle = defaultMaxConnectionIdle
+      }
+      if kp.MaxConnectionAge == 0 {
+          kp.MaxConnectionAge = defaultMaxConnectionAge
+      }
+      // Add a jitter to MaxConnectionAge.
+      kp.MaxConnectionAge += getJitter(kp.MaxConnectionAge)
+      if kp.MaxConnectionAgeGrace == 0 {
+          kp.MaxConnectionAgeGrace = defaultMaxConnectionAgeGrace
+      }
+      if kp.Time == 0 {
+          kp.Time = defaultServerKeepaliveTime
+      }
+      if kp.Timeout == 0 {
+          kp.Timeout = defaultServerKeepaliveTimeout
+      }
+      kep := config.KeepalivePolicy
+      if kep.MinTime == 0 {
+          kep.MinTime = defaultKeepalivePolicyMinTime
+      }
+      done := make(chan struct{})
+      t := &http2Server{
+          ctx:               context.Background(),
+          done:              done,
+          conn:              conn,
+          remoteAddr:        conn.RemoteAddr(),
+          localAddr:         conn.LocalAddr(),
+          authInfo:          config.AuthInfo,
+          framer:            framer,
+          readerDone:        make(chan struct{}),
+          writerDone:        make(chan struct{}),
+          maxStreams:        maxStreams,
+          inTapHandle:       config.InTapHandle,
+          fc:                &trInFlow{limit: uint32(icwz)},
+          state:             reachable,
+          activeStreams:     make(map[uint32]*Stream),
+          stats:             config.StatsHandler,
+          kp:                kp,
+          idle:              time.Now(),
+          kep:               kep,
+          initialWindowSize: iwz,
+          czData:            new(channelzData),
+          bufferPool:        newBufferPool(),
+      }
+      t.controlBuf = newControlBuffer(t.done)
+      if dynamicWindow {
+          t.bdpEst = &bdpEstimator{
+              bdp:               initialWindowSize,
+              updateFlowControl: t.updateFlowControl,
+          }
+      }
+      if t.stats != nil {
+          t.ctx = t.stats.TagConn(t.ctx, &stats.ConnTagInfo{
+              RemoteAddr: t.remoteAddr,
+              LocalAddr:  t.localAddr,
+          })
+          connBegin := &stats.ConnBegin{}
+          t.stats.HandleConn(t.ctx, connBegin)
+      }
+      if channelz.IsOn() {
+          t.channelzID = channelz.RegisterNormalSocket(t, config.ChannelzParentID, fmt.Sprintf("%s -> %s", t.remoteAddr, t.localAddr))
+      }
+
+      t.connectionID = atomic.AddUint64(&serverConnectionCounter, 1)
+
+      t.framer.writer.Flush()
+
+      defer func() {
+          if err != nil {
+              t.Close()
+          }
+      }()
+
+      // Check the validity of client preface.
+      preface := make([]byte, len(clientPreface))
+      if _, err := io.ReadFull(t.conn, preface); err != nil {
+          return nil, connectionErrorf(false, err, "transport: http2Server.HandleStreams failed to receive the preface from client: %v", err)
+      }
+      if !bytes.Equal(preface, clientPreface) {
+          return nil, connectionErrorf(false, nil, "transport: http2Server.HandleStreams received bogus greeting from client: %q", preface)
+      }
+
+      frame, err := t.framer.fr.ReadFrame()
+      if err == io.EOF || err == io.ErrUnexpectedEOF {
+          return nil, err
+      }
+      if err != nil {
+          return nil, connectionErrorf(false, err, "transport: http2Server.HandleStreams failed to read initial settings frame: %v", err)
+      }
+      atomic.StoreInt64(&t.lastRead, time.Now().UnixNano())
+      sf, ok := frame.(*http2.SettingsFrame)
+      if !ok {
+          return nil, connectionErrorf(false, nil, "transport: http2Server.HandleStreams saw invalid preface type %T from client", frame)
+      }
+      t.handleSettings(sf)
+
+      go func() {
+          t.loopy = newLoopyWriter(serverSide, t.framer, t.controlBuf, t.bdpEst)
+          t.loopy.ssGoAwayHandler = t.outgoingGoAwayHandler
+          if err := t.loopy.run(); err != nil {
+              errorf("transport: loopyWriter.run returning. Err: %v", err)
+          }
+          t.conn.Close()
+          close(t.writerDone)
+      }()
+      go t.keepalive()
+      return t, nil
+  }
+#+END_SRC
+* 文档
++ [[https://zhuanlan.zhihu.com/p/104060740][grpc 源码笔记 01： balancer - 知乎]]
++ [[http://yangxikun.github.io/golang/2019/10/19/golang-grpc-client-side-lb.html][golang grpc 客户端负载均衡、重试、健康检查]]
++ [[https://github.com/grpc/grpc/blob/master/doc/load-balancing.md][Load Balancing in gRPC]]
++ [[https://github.com/grpc/grpc/issues/11704][grpc/grpc#11704 Use multiple connections to avoid the server's SETTINGS_MAX_C...]]
++ [[https://github.com/grpc/grpc/blob/master/doc/health-checking.md][GRPC Health Checking Protocol]]
++ [[https://github.com/grpc/grpc/blob/master/doc/connectivity-semantics-and-api.md][gRPC Connectivity Semantics and API]]
