@@ -131,6 +131,19 @@ auto j = nlohmann::json::parse(" { \" happy \":true,\" pi \":3.141} ");
   }
   }
 #+END_SRC
+
+使用方法如下 ：
+#+BEGIN_SRC c++
+// json string -> struct
+nlohmann::json jsonObj = nlohmann::json::parse("{\"key\":\"dd\",\"perfix\":false}");
+auto cmsg              = jsonObj.get<KeyData>();
+
+// struct -> json string
+KeyData smsg = KeyData("peer", true);
+nlohmann::json data(smsg);
+auto str = data.dump();
+#+END_SRC
+
 * /basic_json::value/
 /basic_json/ 除了提供容器常用的接口 /operator[]/  和 /at/ 之外，还提供了 /value/ 成员函数用于取对象中的值，当值不存在的时候提供默认值。这个方法和 /Python/ 中的 /or/ 很像。
 
