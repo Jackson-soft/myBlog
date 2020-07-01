@@ -1,0 +1,78 @@
+#+TITLE:  /Ubuntu/ 搭建 /gitlab/ 及 /Jenkins/ 纪录
+* /Let's Encrypt/
+** 安装客户端
+#+BEGIN_SRC shell
+sudo add-apt-repository ppa:certbot/certbot
+sudo apt-get -y update
+sudo apt-get install -y certbot
+#+END_SRC
+** 申请证书
+#+BEGIN_SRC shell
+certbot --agree-tos --email email@example.com certonly --webroot -w /opt/gitlab/embedded/service/gitlab-rails/public/ -d www.example.com
+#+END_SRC
+
+上述命令中：
+ + --agree-tos
+   同意用户协议。
+ + --email
+   首次申请证书时，需要邮箱地址来创建 Let's Encrypt 的账号。不过，并不会验证此账号。
+邮箱地址用于接受证书过期提醒。
+ + certonly
+   只申请证书。
+ + --webroot
+   通过在当前运行的 web 服务器下存放验证文件来验证身份。
+ + -w
+   指定当前运行的 web 服务器的根目录。
+
+对于通过 Omnibus 安装的 GitLab 的默认的 nginx 服务器的根目录位于 /opt/gitlab/embedded/service/gitlab-rails/public/。
+ + -d
+   指定要申请证书的域名。
+* /Gitlib/
+** 安装
+*** 安装必要的组件
+#+BEGIN_SRC shell
+sudo apt-get install -y curl openssh-server ca-certificates postfix
+#+END_SRC
+*** 安装源
+#+BEGIN_SRC shell
+curl -sS https://packages.gitlab.com/install/repositories/gitlab/gitlab-ce/script.deb.sh | sudo bash
+#+END_SRC
+这里必须要吐槽一下， /gitlab/ 官方默认的安装指导是安装企业版 /gitlab-ee/ ，我们这里要安装的是开源版本 /gitlab-ce/ ，大家在安装
+的时候要注意一下。
+*** 安装包
+#+BEGIN_SRC shell
+sudo EXTERNAL_URL="https://gitlab.example.com" apt-get install gitlab-ce
+#+END_SRC
+** 与 /Let's Encrypt/ 集成
+*** 配置文件
+修改 //etc/gitlab/gitlab.rb/ 文件
+
+#+BEGIN_SRC shell
+letsencrypt['enable'] = true                      # GitLab 10.5 and 10.6 require this option
+external_url "https://gitlab.example.com"         # Must use https protocol
+letsencrypt['contact_emails'] = ['foo@email.com'] # Optional
+#+END_SRC
+
+*** 自动更新
+#+BEGIN_SRC shell
+letsencrypt['auto_renew'] = true
+#+END_SRC
+
+*** 启动新配置
+#+BEGIN_SRC shell
+sudo gitlab-ctl reconfigure
+#+END_SRC
+* /Jenkins/
+** 安装
+#+BEGIN_SRC shell
+wget -q -O - https://pkg.jenkins.io/debian-stable/jenkins.io.key | sudo apt-key add -
+sudo sh -c 'echo deb https://pkg.jenkins.io/debian-stable binary/ > \
+    /etc/apt/sources.list.d/jenkins.list'
+sudo apt-get update
+sudo apt install openjdk-11-jdk
+sudo apt-get install -y jenkins
+#+END_SRC
+* 文档
++ [[https://about.gitlab.com/install/#ubuntu?version=ce][Download and install GitLab | GitLab]]
++ [[https://www.jenkins.io/doc/book/installing/#debianubuntu][Installing Jenkins]]
++ [[https://certbot.eff.org/lets-encrypt/ubuntubionic-nginx][Certbot - Ubuntubionic Nginx]]
