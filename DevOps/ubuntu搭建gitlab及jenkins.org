@@ -45,7 +45,7 @@ sudo EXTERNAL_URL="https://gitlab.example.com" apt-get install gitlab-ce
 #+END_SRC
 ** 与 /Let's Encrypt/ 集成
 *** 配置文件
-修改 //etc/gitlab/gitlab.rb/ 文件
+修改 ~/etc/gitlab/gitlab.rb~ 文件
 
 #+BEGIN_SRC shell
 letsencrypt['enable'] = true                      # GitLab 10.5 and 10.6 require this option
@@ -65,8 +65,8 @@ sudo gitlab-ctl reconfigure
 ** 数据存放
 一般情况是要给 /gitlab/ 单独挂载一个数据盘用来存放代码数据的。
 *** 修改默认数据存放目录配置
-/Gitlab/ 默然安装时，默认的仓库存储路径在 //var/opt/gitlab/git-data/ 目录下，仓库存储在子目录 /repositories/ 里面，可以通过修改
-//etc/gitlab/gitlab.rb/ 文件中 /git_data_dirs/ 参数来自定义父目录
+/Gitlab/ 默然安装时，默认的仓库存储路径在 ~/var/opt/gitlab/git-data~ 目录下，仓库存储在子目录 /repositories/ 里面，可以通过修改
+~/etc/gitlab/gitlab.rb~ 文件中 /git_data_dirs/ 参数来自定义父目录
 #+begin_src shell
  git_data_dirs({
    "default" => {
@@ -74,7 +74,7 @@ sudo gitlab-ctl reconfigure
     }
  })
 #+end_src
-我这里是把数据盘挂在 //data0/ 下面。
+我这里是把数据盘挂在 ~/data0~ 下面。
 
 *注意 ：目标路径和其子路径必须不能为软链接。*
 *** 生效配置
@@ -115,7 +115,7 @@ gitlab-ctl restart
 #+begin_src shell
 gitlab-rake gitlab:backup:create
 #+end_src
-如果成功的话，在 //data0/gitlab/backups/ 目录下会生成 /1593744116_2020_07_03_13.1.1_gitlab_backup.tar/ 这么格式的一个文件
+如果成功的话，在 ~/data0/gitlab/backups~ 目录下会生成 /1593744116_2020_07_03_13.1.1_gitlab_backup.tar/ 这么格式的一个文件
 （时间戳+日期+版本号）。
 *** 恢复备份
 #+begin_src shell
