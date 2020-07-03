@@ -62,6 +62,69 @@ letsencrypt['auto_renew'] = true
 #+BEGIN_SRC shell
 sudo gitlab-ctl reconfigure
 #+END_SRC
+** 数据存放
+一般情况是要给 /gitlab/ 单独挂载一个数据盘用来存放代码数据的。
+*** 修改默认数据存放目录配置
+/Gitlab/ 默然安装时，默认的仓库存储路径在 /var/opt/gitlab/git-data 目录下，仓库存储在子目录 /repositories/ 里面，可以通过修改
+/etc/gitlab/gitlab.rb文件中 /git_data_dirs/ 参数来自定义父目录
+#+begin_src shell
+ git_data_dirs({
+   "default" => {
+     "path" => "/data0/gitlab/git-data"
+    }
+ })
+#+end_src
+我这里是把数据盘挂在 /data0/ 下面。
+
+*注意 ：目标路径和其子路径必须不能为软链接。*
+*** 生效配置
++ 没有数据
+#+begin_src shell
+# 停服
+gitlab-ctl stop
+
+# 重新配置服务
+gitlab-ctl reconfigure
+#+end_src
++ 已存在数据
+#+begin_src shell
+# 停服
+gitlab-ctl stop
+
+# 注意 'repositories'后面不带斜杠，而 '/home/gitlab-data'后面是有斜杠的
+rsync -av /var/opt/gitlab/git-data/repositories /data0/gitlab/git-data/
+
+gitlab-ctl reconfigure
+
+# 开启服务
+gitlab-ctl start
+#+end_src
+*** 数据备份
++ 修改备份目录
+#+begin_src shell
+gitlab_rails['manage_backup_path'] = true
+gitlab_rails['backup_path'] = "/data0/gitlab/backups"
+#+end_src
++ 生效配置
+#+begin_src shell
+gitlab-ctl reconfigure
+
+gitlab-ctl restart
+#+end_src
++ 创建备份
+#+begin_src shell
+gitlab-rake gitlab:backup:create
+#+end_src
+如果成功的话，在 //data0/gitlab/backups/ 目录下会生成  /1593744116_2020_07_03_13.1.1_gitlab_backup.tar/ 这么格式的一个文件
+（时间戳+日期+版本号）。
+*** 恢复备份
+#+begin_src shell
+# 从指定时间戳的备份恢复（backups目录下有多个备份文件时）
+gitlab-rake gitlab:backup:restore BACKUP=1593744116
+
+# 从默认备份恢复（backups目录下只有一个备份文件时）
+gitlab-rake gitlab:backup:restore
+#+end_src
 * /Jenkins/
 ** 安装
 #+BEGIN_SRC shell
