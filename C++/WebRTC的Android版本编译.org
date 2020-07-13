@@ -1,0 +1,47 @@
+#+TITLE: /WebRTC/ 的 /Android/ 版本编译
+* 说明
+目前 /WebRTC/ 在 /Linux/ 上的编译只支持 /Ubuntu/ 。
+* 安装工具
+** 获取 /depot_tools/
+#+begin_src shell
+git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git
+#+end_src
+** 环境变量
+#+begin_src shell
+echo "export PATH=$PWD/depot_tools:$PATH" > $HOME/.bash_profile
+source $HOME/.bash_profile
+#+end_src
+* 下载源码
+** 默认是下载当前最新的源码，即Master分支。
+#+begin_src shell
+mkdir webrtc
+cd webrtc
+fetch --nohooks webrtc_android
+gclient sync
+#+end_src
+* 编译
+** 安装编译依赖
+官网只给出第一条，建议两条命令都执行。
+#+begin_src shell
+./src/build/install-build-deps.sh
+./src/build/install-build-deps-android.sh
+#+end_src
+** 全编译
+编译的话，都在是 /src/ 目录下执行脚本。
+#+begin_src shell
+source build/android/envsetup.sh
+gn gen out/Release_arm64 --args='target_os="android" target_cpu="arm64" is_debug=false'
+autoninja -C out/Release_arm64 AppRTCMobile
+#+end_src
+** 编译 /Android Studio/ 项目
+#+begin_src shell
+build/android/gradle/generate_gradle.py --output-directory $PWD/out/Release_arm64 \
+  --target "//examples:AppRTCMobile" --use-gradle-process-resources \
+  --split-projects --canary
+#+end_src
+
+执行结束后就会在当前 ~out/Release_arm64~ 目录下出现 ~gradle~ 文件夹，即工程所在的目录。
+
+在 /Android Studio/ 中直接 /import/ 项目就行了。
+* 文档
++ [[https://webrtc.googlesource.com/src/+/refs/heads/master/docs/native-code/android/index.md][WebRTC Android development]]
