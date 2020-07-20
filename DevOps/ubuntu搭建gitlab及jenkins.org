@@ -126,9 +126,11 @@ gitlab-rake gitlab:backup:restore BACKUP=1593744116
 gitlab-rake gitlab:backup:restore
 #+end_src
 ** 报错相关
-*** gitlab点击admin area的任何设定时报错500 Whoops,something went wrong on our end.
+*** /gitlab/ 点击 /admin area/ 的任何设定时报错 /500 Whoops,something went wrong on our end./
 用管理员操作 /admin area/ 的 /setting/ 才会出现，一般用户没有影响。
+
 解决如下：
+
 首先 ~sudo gitlab-rails c~ 进入 ~gitalab~ 的控制台，然后依次执行下面两条指令:
 #+begin_src shel
 settings = ApplicationSetting.last
