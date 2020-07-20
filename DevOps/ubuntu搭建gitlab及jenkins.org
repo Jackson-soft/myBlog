@@ -125,6 +125,19 @@ gitlab-rake gitlab:backup:restore BACKUP=1593744116
 # 从默认备份恢复（backups目录下只有一个备份文件时）
 gitlab-rake gitlab:backup:restore
 #+end_src
+** 报错相关
+*** gitlab点击admin area的任何设定时报错500 Whoops,something went wrong on our end.
+用管理员操作 /admin area/ 的 /setting/ 才会出现，一般用户没有影响。
+解决如下：
+首先 ~sudo gitlab-rails c~ 进入 ~gitalab~ 的控制台，然后依次执行下面两条指令:
+#+begin_src shel
+settings = ApplicationSetting.last
+settings.update_column(:runners_registration_token_encrypted, nil)
+#+end_src
+最后重启即可。
+#+begin_src shell
+gitlab-ctl restart
+#+end_src
 * /Jenkins/
 ** 安装
 #+BEGIN_SRC shell
