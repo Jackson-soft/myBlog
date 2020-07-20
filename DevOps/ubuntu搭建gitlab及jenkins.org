@@ -199,7 +199,8 @@ server {
     }
 }
 #+end_src
-*这里要注意一下，打开系统管理页面如果报一个 ~It appears that your reverse proxy set up is broken.~ 的错误，那需要在系统配置项里把 /Jenkins URL/ 改成 /http://ip:80/ 即指向服务器的80端口。*
+*这里要注意一下* : 如果打开系统管理页面报一个 ~It appears that your reverse proxy set up is broken.~ 的错误，那需要在系统配置
+项里把 /Jenkins URL/ 改成 /http://ip:80/ 即指向服务器的80端口。
 * 文档
 + [[https://about.gitlab.com/install/#ubuntu?version=ce][Download and install GitLab | GitLab]]
 + [[https://www.jenkins.io/doc/book/installing/#debianubuntu][Installing Jenkins]]
