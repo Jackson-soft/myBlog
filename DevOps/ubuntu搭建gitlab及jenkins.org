@@ -132,9 +132,74 @@ wget -q -O - https://pkg.jenkins.io/debian-stable/jenkins.io.key | sudo apt-key 
 sudo sh -c 'echo deb https://pkg.jenkins.io/debian-stable binary/ > \
     /etc/apt/sources.list.d/jenkins.list'
 sudo apt-get update
+# jenkins目前只支持java8和java11,在2.164版本之后支持java11
 sudo apt install openjdk-11-jdk
 sudo apt-get install -y jenkins
 #+END_SRC
+** 使用 /Openresty/ 作为代理
+如果仅仅使用 /proxy_pass/ 反向代理 /jenkins/ 的 ~8080~ 端口，会有一些问题，所以还需要做一些简单的配置。我的配置如下：
+#+begin_src nginx
+upstream jenkins {
+    keepalive 32; # keepalive connections
+    server 127.0.0.1:8080; # jenkins ip and port
+}
+
+server {
+    listen          80;       # Listen on port 80 for IPv4 requests
+
+    #server_name     jenkins.example.com;
+
+    #this is the jenkins web root directory (mentioned in the /etc/default/jenkins file)
+    root            /var/cache/jenkins/war/;
+
+    #access_log      /var/log/nginx/jenkins/access.log;
+    #error_log       /var/log/nginx/jenkins/error.log;
+    ignore_invalid_headers off; #pass through headers from Jenkins which are considered invalid by Nginx server.
+
+    location ~ "^/static/[0-9a-fA-F]{8}\/(.*)$" {
+        #rewrite all static files into requests to the root
+        #E.g /static/12345678/css/something.css will become /css/something.css
+        rewrite "^/static/[0-9a-fA-F]{8}\/(.*)" /$1 last;
+    }
+
+    location /userContent {
+        #have nginx handle all the static requests to the userContent folder files
+        #note : This is the $JENKINS_HOME dir
+        root /var/lib/jenkins/;
+        if (!-f $request_filename){
+        #this file does not exist, might be a directory or a /**view** url
+        rewrite (.*) /$1 last;
+        break;
+        }
+        sendfile on;
+    }
+
+    location / {
+        sendfile off;
+        proxy_pass         http://jenkins;
+        proxy_redirect     default;
+        proxy_http_version 1.1;
+
+        proxy_set_header   Host              $host;
+        proxy_set_header   X-Real-IP         $remote_addr;
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+        proxy_max_temp_file_size 0;
+
+        #this is the maximum upload size
+        client_max_body_size       10m;
+        client_body_buffer_size    128k;
+
+        proxy_connect_timeout      90;
+        proxy_send_timeout         90;
+        proxy_read_timeout         90;
+        proxy_buffering            off;
+        proxy_request_buffering    off; # Required for HTTP CLI commands in Jenkins > 2.54
+        proxy_set_header Connection ""; # Clear for keepalive
+    }
+}
+#+end_src
+*这里要注意一下，打开系统管理页面如果报一个 ~It appears that your reverse proxy set up is broken.~ 的错误，那需要在系统配置项里把 /Jenkins URL/ 改成 /http://ip:80/ 即指向服务器的80端口。*
 * 文档
 + [[https://about.gitlab.com/install/#ubuntu?version=ce][Download and install GitLab | GitLab]]
 + [[https://www.jenkins.io/doc/book/installing/#debianubuntu][Installing Jenkins]]
