@@ -1,5 +1,4 @@
 #+TITLE:  /Jenkins/ 无密克隆 /GitLab/ 仓库配置
-* /Jenkins/ 配置
 * /GitLab/ 配置
 ** 生成秘钥
 登录到jenkins服务器，生成秘钥
@@ -12,6 +11,19 @@ ssh-keygen -t rsa -P "" -f ~/.ssh/id_rsa
 cat ~/.ssh/id_rsa.pub
 #+end_src
 ** 在 /GitLab/ 的 /Admin Area/ 中配置 /Deploy Keys/
-将公钥复制粘贴在 /public deploy key/ 的 ~Key~ 中， ~Title~ 自己写一个标识的东西。
+将公钥复制粘贴在 /public deploy key/ 的 ~Key~ 中， ~Title~ 自己写一个标识的东西。如下图：
+
+[[./Public-deploy-keys.png]]
 ** 项目关联 /Deploy Key/
-在要部署的项目的 ~Settings~ 中的 ~Repository~ 中找到 ~Deploy Keys~ ,
+在要部署的项目的 ~Settings~ 中的 ~Repository~ 中找到 ~Deploy Keys~ ,然后 /enable/ /Publicly accessible deploy keys/ 。
+
+[[./Deploy-Keys.png]]
+* /Jenkins/ 配置
+** 配置 /gitlab/
+在全局系统配置中填写 /gitlab/ 相关，大致如下图：
+
+ [[./gitlab.png]]
+
+然后在添加按钮中选择 ssh 如下图：
+
+[[./ssh-key.png]]
