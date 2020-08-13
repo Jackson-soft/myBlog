@@ -1,0 +1,13 @@
+#+TITLE:  /RTSP/
+* 概念
+RTP: Real-time Transport Protocol,实时传输协议，一般用于多媒体数据的传输。
+
+RTCP: RTP Control Protocol，实时传输控制协议，同RTP一起用于数据传输的监视，控制功能。
+
+RTSP: Real Time Streaming Protocol,实时流协议，用于多媒体数据流的控制，如播放，暂停等。
+
+RTP/RTCP相对于底层传输层，和RTSP，SIP等上层协议一起可以实现视频会议，视频直播等应用
+
+RTP/RTSP/RTCP的区别 用一句简单的话总结：RTSP发起/终结流媒体、RTP传输流媒体数据 、RTCP对RTP进行控制，同步。
+* 参考资料
++ [[https://www.ffmpeg.org/ffmpeg-protocols.html#rtsp][FFmpeg Protocols Documentation]]
