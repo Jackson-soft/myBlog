@@ -1,0 +1,53 @@
+#+TITLE:  /EFK/ 搭建日志收集系统
+* 组件说明
+ELK在每台服务器上部署logstash，比较重量级，所以演化成客户端部署filebeat的EFK，由filebeat收集向logstash中写数据，最后落地到elasticsearch，通过kibana界面进行日志检索。
+* 安装组件
+/filebeat/ 一般安装在产生日志的服务器上用于收集和传输日志用。
+** 安装
+#+begin_src shell
+wget -qO - https://artifacts.elastic.co/GPG-KEY-elasticsearch | sudo apt-key add -
+
+sudo apt-get install apt-transport-https
+
+echo "deb https://artifacts.elastic.co/packages/7.x/apt stable main" | sudo tee -a /etc/apt/sources.list.d/elastic-7.x.list
+
+sudo apt-get update && sudo apt-get install elasticsearch kibana
+#+end_src
+** 配置
+#+begin_src yaml
+network.host: 0
+http.port: 5535
+
+# 节点之间tcp通信的端口
+transport.port: 5540-5550
+
+# 注意这个参数是一定要配置的，不然单机启动不起来
+discovery.seed_hosts: ["0.0.0.0", "[::]"]
+#+end_src
+* 日志输入配置
+1. 在 ~/etc/filebeat/filebeat.yml~ 添加如下配置：
+
+#+begin_src yaml
+filebeat.inputs:
+- type: log
+  enabled: false
+  paths:
+    - /usr/local/openresty/nginx/logs/*.log
+
+output.elasticsearch:
+  enabled: true
+  hosts: ["106.13.3.200:5535"]
+  index: "openresty-log-%{+yyyy-MM-dd}"
+#+end_src
+
+2. 开启 /nginx/ 模块
+#+begin_src shell
+filebeat modules enable nginx
+#+end_src
+
+3. 启动服务
+#+begin_src shell
+systemctl start filebeat
+#+end_src
+* 文档
++ [[https://www.elastic.co/guide/en/beats/filebeat/current/setup-repositories.html][Repositories for APT and YUM | Filebeat Reference {7.8} | Elastic]]
