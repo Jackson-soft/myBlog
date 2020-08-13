@@ -1,0 +1,68 @@
+#+TITLE:  /SRS/ 服务搭建
+* 基本搭建
+** 说明
+[[https://github.com/ossrs/srs][SRS]] 是一个流媒体服务，是我在做直播服务选型的时候使用的。
+** 搭建
+由于官方提供了 /docker/ 部署方式而且是推荐方式，所以我直接跑的 /docker/ 命令：
+#+begin_src shell
+sudo podman run -d -p 1935:1935 -p 1985:1985 -p 8081:8080 ossrs/srs:3
+#+end_src
+*其中* ：1935端口为rtmp服务端口，1985为控制台口，8080为默认对外提供 /http/ 端口。
+我把8080端口映射到8081上主要是我司采用 /aws/ 在没有备案的情况下不能使用诸如80、8080、443这种商品对外提供服务。
+
+在官方文档中提到 /docker/ 的配置文件在以下面两个目录：
++ config file: /usr/local/srs/conf/srs.conf
++ log file: /usr/local/srs/objs/srs.log
+
+所以我们还可以把配置文件带上：
+#+begin_src shell
+sudo podman run -d -p 1935:1935 -p 1985:1985 -p 8081:8080 \
+    -v /path/of/yours.conf:/usr/local/srs/conf/srs.conf \
+    -v /path/of/yours.log:/usr/local/srs/objs/srs.log \
+    ossrs/srs:3
+#+end_src
+* 阿里 /CDN/ 分发
+** 配置域名
+在阿里云的视频云直播控制台 [[https://live.console.aliyun.com/#/domain/list][域名管理]] 创建直播的推拉流两个域名。
+
+[[./domains.png]]
+** 生成鉴权 /URL/
+[[./url.png]]
+* 配置推拉流地址
+** 配置
+#+begin_src conf
+listen              1935;
+max_connections     1000;
+srs_log_tank        file;
+daemon off;
+http_server {
+    enabled         on;
+    listen          8080;
+    dir             ./objs/nginx/html;
+}
+http_api {
+    enabled         on;
+    listen          1985;
+    raw_api {
+        enabled             on;
+        allow_reload        on;
+        allow_query         on;
+        allow_update        on;
+    }
+}
+stats {
+    network         0;
+    disk            sda sdb xvda xvdb;
+}
+vhost __defaultVhost__ {
+   mode            remote;
+   origin          push.2uchat.cn;
+}
+#+end_src
+** 加载相关配置
+#+begin_src shell
+sudo podman run -d -p 1935:1935 -p 1985:1985 -p 8081:8080 \
+    -v /home/ops/srs/conf/srs.conf:/usr/local/srs/conf/srs.conf \
+    -v /home/ops/srs/objs/srs.log:/usr/local/srs/objs/srs.log \
+    ossrs/srs:3
+#+end_src
