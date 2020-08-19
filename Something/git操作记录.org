@@ -18,7 +18,12 @@ git stash pop
 #+END_SRC
 * 同步 /fork/ 仓库
 ** 添加远程同步仓库
+命令格式：
+
 ~git remote add [-t <branch>] [-m <master>] [-f] [--[no-]tags] [--mirror=<fetch|push>] <name> <url>~
+
+示例：
+
 #+BEGIN_SRC shell
 git remote add upstream https://github.com/qicosmos/cinatra.git
 #+END_SRC
@@ -36,12 +41,22 @@ git merge upstream/master
 git remote -v
 #+end_src
 ** 修改
+命令格式：
+
 ~git remote set-url [--push] <name> <newurl> [<oldurl>]~
+
+示例：
+
 #+begin_src shell
 git remote set-url origin https://github.com/USERNAME/REPOSITORY.git
 #+end_src
-* git
+* 修改子模块的仓库链接
+命令格式：
+
 ~git submodule set-url [--] <path> <newurl>~
+
+示例：
+
 #+begin_src shell
 git submodule set-url third_party/uranus https://github.com/Jackson-soft/uranus.git
 #+end_src
