@@ -1,0 +1,128 @@
+#+TITLE:  /Ansible/ 简单入门
+* 安装
+一般情况各系统的包管理应该会有安装包:
+#+begin_src shell
+sudo pacman -S ansible
+#+end_src
+
+或是通过 /python/ 的包管理安装:
+#+begin_src shell
+sudo pip3 install ansible
+#+end_src
+* 组件
+** 配置文件
+/ansible/ 执行的时候会按照以下顺序查找配置项:
+- ~ANSIBLE_CONFIG~ (环境变量)
+- ~ansible.cfg~ (当前目录下)
+- ~.ansible.cfg~ (用户家目录下)
+- ~/etc/ansible/ansible.cfg~
+** Inventory文件
+*** 基本说明
+Ansible可同时操作属于一个组的多台主机，组和主机之间的关系通过Inventory文件配置。
+
+从配置文件中我们可以看到默认在 ~/etc/ansible/hosts~ ，但一般情况下应该是没有的。我是在项目的目录中创建 ~ansible~ 目录，其中
+配置 ~hosts~ 和 ~playbook~ 脚本。
+[[./ansible_file.png]]
+*** ~hosts~
+一般 ~hosts~ 长这样：
+#+begin_src text
+mail.example.com
+
+[webservers] #组名
+foo.example.com:8888 #设置端口
+bar.example.com
+
+[dbservers]
+one.example.com ansible_ssh_user='xxxx' ansible_ssh_pass='password' ansible_sudo_pass='password'  #设置连接用户名密码等
+two.example.com
+three.example.com
+#+end_src
+
+*说明*:
+
+方括号[]中是组名,用于对系统进行分类,便于对不同系统进行个别的管理.
+*** 参数说明
+官方文档上的介绍：
+#+begin_src text
+ansible_ssh_host
+      将要连接的远程主机名.与你想要设定的主机的别名不同的话,可通过此变量设置.
+
+ansible_ssh_port
+      ssh端口号.如果不是默认的端口号,通过此变量设置.
+
+ansible_ssh_user
+      默认的 ssh 用户名
+
+ansible_ssh_pass
+      ssh 密码(这种方式并不安全,我们强烈建议使用 --ask-pass 或 SSH 密钥)
+
+ansible_sudo_pass
+      sudo 密码(这种方式并不安全,我们强烈建议使用 --ask-sudo-pass)
+
+ansible_sudo_exe (new in version 1.8)
+      sudo 命令路径(适用于1.8及以上版本)
+
+ansible_connection
+      与主机的连接类型.比如:local, ssh 或者 paramiko. Ansible 1.2 以前默认使用 paramiko.1.2 以后默认使用 'smart','smart' 方式会根据是否支持 ControlPersist, 来判断'ssh' 方式是否可行.
+
+ansible_ssh_private_key_file
+      ssh 使用的私钥文件.适用于有多个密钥,而你不想使用 SSH 代理的情况.
+
+ansible_shell_type
+      目标系统的shell类型.默认情况下,命令的执行使用 'sh' 语法,可设置为 'csh' 或 'fish'.
+
+ansible_python_interpreter
+      目标主机的 python 路径.适用于的情况: 系统中有多个 Python, 或者命令路径不是"/usr/bin/python",比如  \*BSD, 或者 /usr/bin/python
+      不是 2.X 版本的 Python.我们不使用 "/usr/bin/env" 机制,因为这要求远程用户的路径设置正确,且要求 "python" 可执行程序名不可为 python以外的名字(实际有可能名为python26).
+
+      与 ansible_python_interpreter 的工作方式相同,可设定如 ruby 或 perl 的路径....
+#+end_src
+** /Playbook/
+简单的示例：
+#+begin_src yaml
+---
+- hosts: test  # 指明执行任务的主机，可以是一个或多个由冒号分隔主机组
+  remote_user: ops  # 指定远程主机上执行任务的用户
+  become: yes  # 是否要 sudo 改变用户
+  become_user: root # sudo 的用户
+  become_method: sudo
+  tasks:
+      - name: copy files to remote server
+        copy:
+            src: "{{ item.src }}"
+            dest: "{{ item.dest }}"
+            mode: "{{ item.mode }}"
+            backup: yes  # 备份
+            force: yes   # 强制
+        with_items:  # 多文件复制
+            - {
+                  src: "~/work/hall_server/hall_server",
+                  dest: "/opt/hall/hall_server",
+                  mode: "0755",
+              }
+            - {
+                  src: "~/work/hall_server/etc/",  # 注意最后的 /，会自动创建 etc 目录
+                  dest: "/opt/hall/etc",
+                  mode: "0644",
+              }
+            - {
+                  src: "~/work/hall_server/hall.service",
+                  dest: "/etc/systemd/system/hall.service",
+                  mode: "0644",
+              }
+      - name: start hall service
+        service: name=hall state=started enabled=yes  # 系统 service 行为
+#+end_src
+*说明*:
+
+- 从源目录复制文件到远程服务器， /ansible/ 是不会自动创建目录的，如果想要这种行为，则在 /src/ 参数中的路径后添加 / 。
+* 命令
+部署命令：
+#+begin_src shell
+ansible-playbook -i ansible/hosts ansible/hall.yml
+#+end_src
+
+*说明*: 这里 ~-i~ 是指定主机配置。
+* 文档
++ [[https://ansible-tran.readthedocs.io/en/latest/index.html][Ansible中文权威指南 — 国内最专业的Ansible中文官方学习手册]]
++ [[https://docs.ansible.com/ansible/latest/reference_appendices/playbooks_keywords.html#play][Playbook Keywords — Ansible Documentation]]
