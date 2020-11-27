@@ -1,0 +1,109 @@
+#+TITLE: ~Modern CMake~ 实践
+* 基本
+一般意义上的 ~Modern CMake~ 是从 /3.0.0/ 开始的。所以我们要 ~cmake_minimum_required (VERSION 3.0)~ 。
+
+最简单的一个例子:
+#+begin_src cmake
+cmake_minimum_required(VERSION 3.10)
+
+# set the project name
+project(Tutorial)
+
+set(CMAKE_CXX_CLANG_TIDY clang-tidy -checks=-*,readability-*)
+# add the executable
+add_executable(Tutorial tutorial.cxx)
+#+end_src
+* 选项
++ ~-S <path-to-source>~
+指定编译根目录。
++ ~-B <path-to-build>~
+指定编译目录。如果不存在则创建。
++ ~-G <generator-name>~
+指定编译生成器。我一般使用 ~Ninja~ 。
++ ~-DCMAKE_EXPORT_COMPILE_COMMANDS=ON~
+开启编译命令的文件输出。要注意的是这个选项只在生成器是 ~Makefile~ 和 ~Ninja~ 的时候才有效。一般会在编译目录下生成
+~compile_commands.json~ 文件，主要是用于 [[https://microsoft.github.io/language-server-protocol/][Language Server Protocol]] 的语义补全。
++ ~-DCMAKE_BUILD_TYPE=Debug~
+指定编译选项。可选项有 ~Debug, Release, RelWithDebInfo, MinSizeRel...~ 。
+* 多目录
+* 变量
+** 变量引用方式
++ 常规引用方式是使用 ~${}~ 。
++ 在 ~IF~ 等语句中是直接使用变量名，不需要通过 ~${}~ 取值。
+** 自定义变量方式
+一般通过 ~SET~ 指令就可以自定义变量。示例：
+#+begin_src cmake
+set(MY_TEST main.cpp)
+#+end_src
+** 内置变量
++ ~CMAKE_BINARY_DIR~ 、 ~PROJECT_BINARY_DIR~ 、 ~<projectname>_BINARY_DIR~
+一般情况下，如果是 ~in-source~ 编译，指的是工程顶级目录，如果是 ~out-of-source~ 编译，则指的这是工程编译发生的目录。
++ ~CMAKE_SOURCE_DIR~ 、 ~PROJECT_SOURCE_DIR~ 、 ~<projectname>_SOURCE_DIR~
+一般情况下，都是指工程顶级目录。差别在于 ~PROJECT_SOURCE_DIR~ 是指包含最新 ~project()~ 命令的 ~CMakeLists.txt~ 文件夹。
++ ~CMAKE_CURRENT_SOURCE_DIR~
+指的是当前处理的 ~CMakeLists.txt~ 所在路径目录（即是动态的，有可能是工程顶级目录的子目录）。
++ ~CMAKE_CURRENT_BINARY_DIR~
+在 ~in-source~ 编译中，它跟 ~CMAKE_CURRENT_SOURCE_DIR~ 是一致的。如果是 ~out-of-source~ 编译，指的是 ~target~ 编译目录。
++ ~CMAKE_MODULE_PATH~
+这个变量用来定义自己的 ~cmake~ 模块所在的路径。
+
+#+begin_src cmake
+set(CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/MyCMakeScripts)
+find_package(HelloWorld)
+#+end_src
+* 常用指令
++ ~project~
+语法：
+#+begin_src cmake
+project(<PROJECT-NAME> [<language-name>...])
+project(<PROJECT-NAME>
+        [VERSION <major>[.<minor>[.<patch>[.<tweak>]]]]
+        [DESCRIPTION <project-description-string>]
+        [HOMEPAGE_URL <url-string>]
+        [LANGUAGES <language-name>...])
+#+end_src
+
+设置项目名称。
++ ~find_package~
+语法：
+#+begin_src cmake
+find_package(<PackageName> [version] [EXACT] [QUIET] [MODULE]
+             [REQUIRED] [[COMPONENTS] [components...]]
+             [OPTIONAL_COMPONENTS components...]
+             [NO_POLICY_SCOPE])
+#+end_src
+
+查找依赖库。
++ ~add_executable~
+语法： ~add_executable(<name> [WIN32] [MACOSX_BUNDLE] [EXCLUDE_FROM_ALL] [source1] [source2 ...])~
+
+根据源文件生成目标可执行程序。
++ ~add_library~
+语法： ~add_library(<name> [STATIC | SHARED | MODULE] [EXCLUDE_FROM_ALL] [source1] [source2 ...])~
+
+根据源码文件生成目标库。
++ ~add_subdirectory~
+语法： ~add_subdirectory(source_dir [binary_dir] [EXCLUDE_FROM_ALL])~
+
+添加子目录用于编译。
++ ~enable_testing~
+语法： ~enable_testing()~
+
+当前目录及子目录开启测试。一般是放在工程的主 ~CMakeLists.txt~ 里。
++ ~add_test~
+语法： ~add_test(NAME <name> COMMAND <command> [<arg>...] [CONFIGURATIONS <config>...] [WORKING_DIRECTORY <dir>]
+[COMMAND_EXPAND_LISTS])~
+
+如果没有在同一个 ~CMakeLists.txt~ 中调用 ~enable_testing()~ 指令, 任何 ~add_test~ 都是无效的。
++ ~aux_source_directory~
+语法： ~aux_source_directory(<dir> <variable>)~
+
+在目录中查找所有的源文件。用法：
+
+#+begin_src cmake
+aux_source_directory(src SRC_LIST)
+add_executable(main ${SRC_LIST})
+#+end_src
+* 参考
++ [[https://cmake.org/cmake/help/latest/guide/tutorial/index.html][CMake Tutorial — CMake 3.19.1 Documentation]]
++ [[https://gitlab.kitware.com/cmake/community/-/wikis/doc/cmake/Useful-Variables][Useful Variables · Wiki · CMake / Community · GitLab]]
