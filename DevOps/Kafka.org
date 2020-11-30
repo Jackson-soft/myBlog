@@ -84,7 +84,7 @@ server.5 = 125.23.63.23:1234:1235:participant;125.23.63.23:1236
 **** zookeeper数据目录添加myid配置
 注意： 三台服务器都要添加 /myid/ 文件，但值的内容不一样。具体要跟 /zk/ 的配置一样。
 
-在第二台服务器上 /zk/ 的 /dataDir/ 目录下 (//opt/data/zookeeper/) 执行如下命令生成 /myid/ 文件：
+在第二台服务器上 /zk/ 的 /dataDir/ 目录下 (~/opt/data/zookeeper~) 执行如下命令生成 /myid/ 文件：
 #+begin_src shell
 echo 1 > myid
 #+end_src
@@ -131,6 +131,7 @@ log.dirs=/opt/data/kafka
 注意： 我这份配置是内外网分流的。
 
 内网访问： 172.31.27.73:7001
+
 外网访问： 140.179.30.63:7000
 
 说明：
