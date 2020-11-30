@@ -15,6 +15,7 @@ tar xzf kafka_2.13-2.6.0.tgz
 sudo mv kafka_2.13-2.6.0 /opt/kafka
 #+end_src
 ** zookeeper
+*** 服务
 #+begin_src shell
 sudo vim /etc/systemd/system/zookeeper.service
 #+end_src
@@ -35,7 +36,61 @@ Restart=on-abnormal
 [Install]
 WantedBy=multi-user.target
 #+end_src
-** kafka
+*** 配置相关
+**** 基本配置
+编辑 ~/opt/kafka/config/zookeeper.properties~ ，三台机器配置都是一样，大致如下：
+#+begin_src conf
+# the directory where the snapshot is stored.
+dataDir=/opt/data/zookeeper
+# the port at which the clients will connect
+#clientPort=2181
+clientPort=7005
+# disable the per-ip limit on the number of connections since this is a non-production config
+#maxClientCnxns=0
+# Disable the adminserver by default to avoid port conflicts.
+# Set the port to something non-conflicting if choosing to enable this
+admin.enableServer=false
+# admin.serverPort=8080
+tickTime=2000
+initLimit = 10
+syncLimit = 5
+server.0=172.31.18.221:2888:3888;7005
+server.1=172.31.27.73:2888:3888;7005
+server.2=172.31.30.185:2888:3888;7005
+#+end_src
+
+说明：
++ tickTime 基本事件单元，以毫秒为单位。它用来控制心跳和超时，默认情况下最小的会话超时时间为两倍的 tickTime。
++ initLimit Leader-Follower初始通信时限 tickTime*10。
++ syncLimit Leader-Follower同步通信时限 tickTime*5。
++ server 其配置规范如下：
+#+begin_src text
+server.<positive id> = <address1>:<port1>:<port2>[:role];[<client port address>:]<client port>**
+#+end_src
+
+Client 端端口规范在分号的右边。Client 端端口地址是可选的，如果未指定，则默认为“ 0.0.0.0”。通常，角色也是可选的，它可以是
+参与者或观察者(默认情况下为参与者)。
+
+合法的服务器声明示例：
+#+begin_src text
+server.5 = 125.23.63.23:1234:1235;1236
+server.5 = 125.23.63.23:1234:1235:participant;1236
+server.5 = 125.23.63.23:1234:1235:observer;1236
+server.5 = 125.23.63.23:1234:1235;125.23.63.24:1236
+server.5 = 125.23.63.23:1234:1235:participant;125.23.63.23:1236
+#+end_src
+
+注意： 这里的服务器 /positive id/ 数值跟 /dataDir/ 目录下的 /myid/ 数据是一样的。
+**** zookeeper数据目录添加myid配置
+注意： 三台服务器都要添加 /myid/ 文件，但值的内容不一样。具体要跟 /zk/ 的配置一样。
+
+在第二台服务器上 /zk/ 的 /dataDir/ 目录下 (//opt/data/zookeeper/) 执行如下命令生成 /myid/ 文件：
+#+begin_src shell
+echo 1 > myid
+#+end_src
+
+[[./zk_myid.png]]
+** /kafka/
 *** 服务
 #+begin_src shell
 sudo vim /etc/systemd/system/kafka.service
@@ -62,8 +117,52 @@ sudo systemctl daemon-reload
 #+end_src
 
 *** 配置
+编辑 ~/opt/kafka/config/server.properties~ 文件，大致如下：
 #+begin_src conf
 broker.id=0
-listeners=PLAINTEXT://:9092
+listeners=INTERNAL://0.0.0.0:7001,EXTERNAL://0.0.0.0:7000
+advertised.listeners=INTERNAL://172.31.27.73:7001,EXTERNAL://140.179.30.63:7000
+listener.security.protocol.map=INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
+inter.broker.listener.name=INTERNAL
 zookeeper.connect=140.179.30.168:2181,140.179.30.63:2181,140.179.32.156:2181
+log.dirs=/opt/data/kafka
 #+end_src
+
+注意： 我这份配置是内外网分流的。
+
+内网访问： 172.31.27.73:7001
+外网访问： 140.179.30.63:7000
+
+说明：
++ /broker.id/ 这个必须要改，且必须是整型，需要保持唯一。
++ /listeners/ 定义Kafka Broker的Listener的配置项，是kafka真正bind的地址。
++ /advertised.listeners/ 将Broker的Listener信息发布到Zookeeper中，是暴露给外部的listeners，如果没有设置，会用listeners。
++ /inter.broker.listener.name/ 专门用于Kafka集群中Broker之间的通信。
++ /listener.security.protocol.map/ 配置监听者的安全协议的，比如 /PLAINTEXT/ 、 /SSL/ 、 /SASL_PLAINTEXT/ 、 /SASL_SSL/ 。
++ /zookeeper.connect/ 这个是 /zk/ 集群地址，根据自己情况修改，我这里配置的是内网地址。
+
+** Kafka Manager
+/kafka-manager/ 是由雅虎开源的 /kafka/ 集群管理工具，用户可以在 /Web/ 界面执行一些简单的集群管理操作。
+
+我这边是用 /docker-compose/ 部署的，脚本如下：
+#+begin_src yaml
+version: "3.7"
+
+services:
+    kafka_manager:
+        image: hlebalbau/kafka-manager:stable
+        container_name: kafka_manager
+        restart: always
+        ports:
+            - 8080:9000
+        environment:
+            ZK_HOSTS: 172.31.18.221:7005,172.31.27.73:7005,172.31.30.185:7005
+            APPLICATION_SECRET: random-secret
+#+end_src
+
+我们在界面上把 /zk/ 集群地址添加进来就可以了，目前我安装的版本只支持到 /kafka 2.4/ 版本，不过貌似不影响。
+
+[[./cmak.png]]
+* 文档
++ [[http://kafka.apache.org/documentation/#configuration][Apache Kafka]]
++ [[https://github.com/yahoo/CMAK][GitHub - yahoo/CMAK: CMAK is a tool for managing Apache Kafka clusters]]
