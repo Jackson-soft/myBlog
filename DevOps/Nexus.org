@@ -1,0 +1,155 @@
+#+TITLE: ~Nexus~ 私服实践
+* ~Docker~
+** 基本配置
+*** 说明
+~Nexus~ 是一个多功能的仓库，既能托管私有仓库，还可以代理访问公共仓库。
+
+~Nexus~ 一般是作为 ~Maven~ 仓库使用，但同时还提供了 ~Docker, yum, apt, npm, ruby gems, pypi~ 等诸多类型的仓库功能。
+
+~Nexus~ 提供三种仓库类型：
++ ~hosted~ ： 自托管的私有仓库（端口：8083）
++ ~proxy~ ： 代理其他公共仓库
++ ~group~ ： 聚合仓库（端口：8082）
+
+前两者都可以创建多个仓库，最后一个则可以将他们全部聚合到一个URL来访问。
+*** 配置仓库
+1. 创建 ~blob~ 存储
+   先创建一个用于存储镜像的空间。
+   - ~Name~ ： 填写一个易于辨认的名字。
+   - ~Path~ ： 会自动生成并补全。默认在Nexus安装目录下面的sonatype-work/nexus3/blobs/下，也可以修改到其它目录或磁盘，甚至
+     可以是NFS或者cephfs的目录。
+
+[[./docker_blob.png]]
+
+2. ~hosted~
+[[./docker_local.png]]
+3. ~proxy~
+代理的主要配置就是下面这些：
+[[./docker_proxy.png]]
+
+注意：要勾选 ~Use certificates stored in the Nexus truststore to connect to external systems~
+4. ~group~
+[[./docker_group.png]]
+
+~group~ 的主要配置就是把上面两个仓库加入到成员中。
+5. ~Realms~
+[[./docker_realms.png]]
+
+这里就是把 ~Docker Bearer Token Realm~ 加到 ~Active~ 。
+** ~Nginx~ 配置
+#+begin_src conf
+# ip地址可以换成内网ip
+upstream nexus_docker_get {
+    server 0.0.0.0:8082;
+}
+
+upstream nexus_docker_put {
+    server 0.0.0.0:8083;
+}
+server {
+    listen 80;
+    listen 443 ssl;
+    server_name your-repo;
+    access_log /var/log/nginx/idocker.io.log;
+    # 证书
+    ssl_certificate /usr/local/nginx/conf/ssl-key/STAR.your-repo.crt;# 证书路径自己的来定
+    ssl_certificate_key /usr/local/nginx/conf/ssl-key/STAR.your-repo.key;
+    ssl_protocols TLSv1.1 TLSv1.2;
+    ssl_ciphers '!aNULL:kECDH+AESGCM:ECDH+AESGCM:RSA+AESGCM:kECDH+AES:ECDH+AES:RSA+AES:';
+    ssl_prefer_server_ciphers on;
+    ssl_session_cache shared:SSL:10m;
+    # disable any limits to avoid HTTP 413 for large image uploads
+    client_max_body_size 0;
+    # required to avoid HTTP 411: see Issue #1486 (https://github.com/docker/docker/issues/1486)
+    chunked_transfer_encoding on;
+    # 设置默认使用推送代理
+    set $upstream "nexus_docker_put";
+    # 当请求是GET，也就是拉取镜像的时候，这里改为拉取代理，如此便解决了拉取和推送的端口统一
+    if ($request_method ~* 'GET') {
+        set $upstream "nexus_docker_get";
+    }
+    # 只有本地仓库才支持搜索，所以将搜索请求转发到本地仓库，否则出现500报错
+    if ($request_uri ~ '/search') {
+        set $upstream "nexus_docker_put";
+    }
+    index index.html index.htm index.php;
+    location / {
+        proxy_pass http://$upstream;
+        proxy_set_header Host $host;
+        proxy_connect_timeout 3600;
+        proxy_send_timeout 3600;
+        proxy_read_timeout 3600;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_buffering off;
+        proxy_request_buffering off;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto http;
+    }
+}
+#+end_src
+
+~nginx -t~ 检查没有问题的话，就可以 ~nginx -s reload~ 了。
+** ~Docker~ 配置
+*** 源
+编辑 ~/etc/docker/daemon.json~ ，如果没有则创建。
+#+begin_src shell
+sudo vim /etc/docker/daemon.json
+#+end_src
+
+#+begin_src json
+{
+    "registry-mirrors": [
+        "https://nexus.xx.cn"
+    ]
+}
+#+end_src
+
+重启 ~Docker~
+#+begin_src shell
+sudo systemctl restart docker
+#+end_src
+
+登录镜像仓库
+#+begin_src text
+ops@ip-172-31-20-19:~$ sudo docker login -u root -p testpass nexus.xx.cn
+WARNING! Using --password via the CLI is insecure. Use --password-stdin.
+WARNING! Your password will be stored unencrypted in /root/.docker/config.json.
+Configure a credential helper to remove this warning. See
+https://docs.docker.com/engine/reference/commandline/login/#credentials-store
+
+Login Succeeded
+#+end_src
+*** 验证
+1. ~pull~ 镜像
+#+begin_src text
+ops@ip-172-31-20-19:~$ sudo docker pull nexus.xx.cn/redis
+Using default tag: latest
+latest: Pulling from redis
+852e50cd189d: Pull complete
+76190fa64fb8: Pull complete
+9cbb1b61e01b: Pull complete
+d048021f2aae: Pull complete
+6f4b2af24926: Pull complete
+1cf1d6922fba: Pull complete
+Digest: sha256:5b98e32b58cdbf9f6b6f77072c4915d5ebec43912114031f37fa5fa25b032489
+Status: Downloaded newer image for nexus.xx.cn/redis:latest
+nexus.xx.cn/redis:latest
+#+end_src
+2. 打标签
+#+begin_src shell
+sudo docker tag redis:latest nexus.xx.cn/redis:v1
+#+end_src
+3. ~push~ 镜像
+#+begin_src text
+ops@ip-172-31-20-19:~$ sudo docker push nexus.xx.cn/redis:v1
+The push refers to repository [nexus.xx.cn/redis]
+d3fc9f08141a: Pushed
+06d5c35d63a8: Pushed
+4bc5e04ae889: Pushed
+60f4b166131f: Pushed
+c492b4fe510f: Pushed
+f5600c6330da: Pushed
+#+end_src
+* ~Maven~
+* 文档
++ [[https://docs.docker.com/registry/insecure/#deploy-a-plain-http-registry][Test an insecure registry | Docker Documentation]]
