@@ -75,28 +75,59 @@ find_package(<PackageName> [version] [EXACT] [QUIET] [MODULE]
 
 查找依赖库。
 + ~add_executable~
-语法： ~add_executable(<name> [WIN32] [MACOSX_BUNDLE] [EXCLUDE_FROM_ALL] [source1] [source2 ...])~
+语法：
+#+begin_src cmake
+add_executable(<name> [WIN32] [MACOSX_BUNDLE]
+               [EXCLUDE_FROM_ALL]
+               [source1] [source2 ...])
+#+end_src
 
 根据源文件生成目标可执行程序。
 + ~add_library~
-语法： ~add_library(<name> [STATIC | SHARED | MODULE] [EXCLUDE_FROM_ALL] [source1] [source2 ...])~
+语法：
+#+begin_src cmake
+add_library(<name> [STATIC | SHARED | MODULE]
+            [EXCLUDE_FROM_ALL]
+            [source1] [source2 ...])
+#+end_src
 
 根据源码文件生成目标库。
 + ~add_subdirectory~
-语法： ~add_subdirectory(source_dir [binary_dir] [EXCLUDE_FROM_ALL])~
+语法：
+#+begin_src cmake
+add_subdirectory(source_dir [binary_dir] [EXCLUDE_FROM_ALL])
+#+end_src
 
-添加子目录用于编译。
+添加子目录用于编译。示例：
+
+#+begin_src cmake
+add_subdirectory(src bin)
+#+end_src
+
+这里的 ~src~ 是源码目录， ~bin~ 是编译后的二进制输出目录。
+
 + ~enable_testing~
-语法： ~enable_testing()~
+语法：
+#+begin_src cmake
+enable_testing()
+#+end_src
 
 当前目录及子目录开启测试。一般是放在工程的主 ~CMakeLists.txt~ 里。
 + ~add_test~
-语法： ~add_test(NAME <name> COMMAND <command> [<arg>...] [CONFIGURATIONS <config>...] [WORKING_DIRECTORY <dir>]
-[COMMAND_EXPAND_LISTS])~
+语法：
+#+begin_src cmake
+add_test(NAME <name> COMMAND <command> [<arg>...]
+         [CONFIGURATIONS <config>...]
+         [WORKING_DIRECTORY <dir>]
+         [COMMAND_EXPAND_LISTS])
+#+end_src
 
 如果没有在同一个 ~CMakeLists.txt~ 中调用 ~enable_testing()~ 指令, 任何 ~add_test~ 都是无效的。
 + ~aux_source_directory~
-语法： ~aux_source_directory(<dir> <variable>)~
+语法：
+#+begin_src cmake
+aux_source_directory(<dir> <variable>)
+#+end_src
 
 在目录中查找所有的源文件。用法：
 

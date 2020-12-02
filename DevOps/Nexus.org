@@ -13,7 +13,7 @@
 
 前两者都可以创建多个仓库，最后一个则可以将他们全部聚合到一个URL来访问。
 *** 配置仓库
-1. 创建 ~blob~ 存储
++ 创建 ~blob~ 存储
    先创建一个用于存储镜像的空间。
    - ~Name~ ： 填写一个易于辨认的名字。
    - ~Path~ ： 会自动生成并补全。默认在Nexus安装目录下面的sonatype-work/nexus3/blobs/下，也可以修改到其它目录或磁盘，甚至
@@ -21,18 +21,19 @@
 
 [[./docker_blob.png]]
 
-2. ~hosted~
++ ~hosted~
 [[./docker_local.png]]
-3. ~proxy~
++ ~proxy~
 代理的主要配置就是下面这些：
+
 [[./docker_proxy.png]]
 
 注意：要勾选 ~Use certificates stored in the Nexus truststore to connect to external systems~
-4. ~group~
++ ~group~
 [[./docker_group.png]]
 
 ~group~ 的主要配置就是把上面两个仓库加入到成员中。
-5. ~Realms~
++ ~Realms~
 [[./docker_realms.png]]
 
 这里就是把 ~Docker Bearer Token Realm~ 加到 ~Active~ 。
@@ -91,7 +92,7 @@ server {
 ~nginx -t~ 检查没有问题的话，就可以 ~nginx -s reload~ 了。
 ** ~Docker~ 配置
 *** 源
-编辑 ~/etc/docker/daemon.json~ ，如果没有则创建。
++ 编辑 ~/etc/docker/daemon.json~ ，如果没有则创建。
 #+begin_src shell
 sudo vim /etc/docker/daemon.json
 #+end_src
@@ -104,12 +105,12 @@ sudo vim /etc/docker/daemon.json
 }
 #+end_src
 
-重启 ~Docker~
++ 重启 ~Docker~
 #+begin_src shell
 sudo systemctl restart docker
 #+end_src
 
-登录镜像仓库
++ 登录镜像仓库
 #+begin_src text
 ops@ip-172-31-20-19:~$ sudo docker login -u root -p testpass nexus.xx.cn
 WARNING! Using --password via the CLI is insecure. Use --password-stdin.
@@ -120,7 +121,7 @@ https://docs.docker.com/engine/reference/commandline/login/#credentials-store
 Login Succeeded
 #+end_src
 *** 验证
-1. ~pull~ 镜像
++ ~pull~ 镜像
 #+begin_src text
 ops@ip-172-31-20-19:~$ sudo docker pull nexus.xx.cn/redis
 Using default tag: latest
@@ -135,11 +136,11 @@ Digest: sha256:5b98e32b58cdbf9f6b6f77072c4915d5ebec43912114031f37fa5fa25b032489
 Status: Downloaded newer image for nexus.xx.cn/redis:latest
 nexus.xx.cn/redis:latest
 #+end_src
-2. 打标签
++ 打标签
 #+begin_src shell
 sudo docker tag redis:latest nexus.xx.cn/redis:v1
 #+end_src
-3. ~push~ 镜像
++ ~push~ 镜像
 #+begin_src text
 ops@ip-172-31-20-19:~$ sudo docker push nexus.xx.cn/redis:v1
 The push refers to repository [nexus.xx.cn/redis]
