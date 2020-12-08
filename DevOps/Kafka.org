@@ -120,19 +120,17 @@ sudo systemctl daemon-reload
 编辑 ~/opt/kafka/config/server.properties~ 文件，大致如下：
 #+begin_src conf
 broker.id=0
-listeners=INTERNAL://0.0.0.0:7001,EXTERNAL://0.0.0.0:7000
-advertised.listeners=INTERNAL://172.31.27.73:7001,EXTERNAL://140.179.30.63:7000
-listener.security.protocol.map=INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
-inter.broker.listener.name=INTERNAL
+listeners=PLAINTEXT://0.0.0.0:7000
+advertised.listeners=PLAINTEXT://140.179.131.139:7000
 zookeeper.connect=140.179.30.168:2181,140.179.30.63:2181,140.179.32.156:2181
 log.dirs=/opt/data/kafka
 #+end_src
 
 注意： 我这份配置是内外网分流的。
 
-内网访问： 172.31.27.73:7001
+内网访问： 172.31.27.73:7000
 
-外网访问： 140.179.30.63:7000
+外网访问： 140.179.131.139:7000
 
 说明：
 + /broker.id/ 这个必须要改，且必须是整型，需要保持唯一。
