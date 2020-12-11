@@ -172,6 +172,36 @@ d3fc9f08141a: Pushed
 c492b4fe510f: Pushed
 f5600c6330da: Pushed
 #+end_src
+** ~K8s~ 配置
+*** 创建 ~Secret~
+~Kubernetes~ 集群使用 ~docker-registry~ 类型的 ~Secret~ 来通过容器仓库的身份验证，进而提取私有映像。
+
+创建 ~Secret~ ，命名为 ~regcred~ ：
+#+begin_src shell
+kubectl -n <你的命名空间> create secret docker-registry regcred \
+  --docker-server=<你的镜像仓库服务器> \
+  --docker-username=<你的用户名> \
+  --docker-password=<你的密码> \
+  --docker-email=<你的邮箱地址>
+#+end_src
+
+*说明* ： ~Pod~ 只能引用位于自身所在名字空间中的 ~Secret~ ，因此需要针对每个名字空间重复执行上述过程。
+
+我安装 ~Metrics Server~ 的时候就是从 ~Nexus~ 中拉取的镜像，所以名字空间 ~kube-system~ 中要创建这么一个密钥。
+*** 在 ~Pod~ 中引用 ~ImagePullSecrets~
+#+begin_src yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: private-reg
+spec:
+  containers:
+  - name: private-reg-container
+    image: <your-private-image>
+  imagePullSecrets:
+  - name: regcred
+#+end_src
 * ~Maven~
 * 文档
 + [[https://docs.docker.com/registry/insecure/#deploy-a-plain-http-registry][Test an insecure registry | Docker Documentation]]
++ [[https://kubernetes.io/zh/docs/tasks/configure-pod-container/pull-image-private-registry/][从私有仓库拉取镜像 | Kubernetes]]
