@@ -34,9 +34,18 @@ There are no packages matching the 'boost' pattern
 讲道理这个逻辑我是有点看不懂，你要说优先查询本地这个我是可以接受，但如果本地不存在不查询默认远程仓库这个我是觉得不太合理。
 当然，吐嘈归吐嘈，希望后续有所改进吧。
 ** 远程仓库
-Conan 提供了几个官方和社区的远端供选择，默认的，安装后会自动配置 Conan Center 这个源：
-+ conan-center: https://bintray.com/conan/conan-center
+~Conan~ 提供了几个官方和社区的远端供选择，默认的，安装后会自动配置 ~Conan Center~ 这个源：
++ conan-center: https://conan.io/center
+
+#+begin_src shell
+$ conan remote add conan-center https://conan.bintray.com
+#+end_src
+
 + bincrafters（开源社区源） : https://bintray.com/bincrafters/public-conan
+
+#+begin_src shell
+$ conan remote add bincrafters https://api.bintray.com/conan/bincrafters/public-conan
+#+end_src
 
 远程仓库的基本管理命令：
 #+begin_src text
@@ -140,7 +149,12 @@ default_options:
 2 directories, 8 files
 #+end_src
 
-所以我倾向使用 ~cmake_find_package~ 这个生成器：
+这样把 ~conanfile.txt~ 文件放在 ~library~ 目录下，安装依赖的时候也是在这个目录下执行：
+#+begin_src shell
+conan install .
+#+end_src
+
+我倾向使用 ~cmake_find_package~ 这个生成器：
 #+begin_src text
 [requires]
 yaml-cpp/0.6.3
