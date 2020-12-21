@@ -1,0 +1,182 @@
+#+TITLE: ~Conan~ 实践
+* 介绍
+~Conan~ 是一个跨平台的 ~C~ 和 ~C++~ 的依赖和包管理工具。
+* 安装
+官方推荐是基于 ~Python~ 的包管理工具来安装：
+#+begin_src shell
+sudo pip3 install conan
+#+end_src
+* 使用
+** 搜索库
+比如我想看看 ~yaml-cpp~ 这个库的版本之类的：
+#+begin_src text
+❯ conan search yaml-cpp -r conan-center
+Existing package recipes:
+
+yaml-cpp/0.2.5@bincrafters/stable
+yaml-cpp/0.3.0@bincrafters/stable
+yaml-cpp/0.5.3@bincrafters/stable
+yaml-cpp/0.6.2@bincrafters/stable
+yaml-cpp/0.6.3
+#+end_src
+*注意* : ~conan~ 默认是从本地缓存中查询第三方库，参数 ~-r~ 是用来指定远程搜索仓库的，而 ~conan-center~ 是官方的默认仓库。
+
+如果不指定的话，而且你本地又不存这个库的缓存的话，基本是找不到的：
+#+begin_src text
+❯ conan search yaml-cpp
+Existing package recipes:
+
+yaml-cpp/0.6.3
+❯ conan search boost
+There are no packages matching the 'boost' pattern
+#+end_src
+
+讲道理这个逻辑我是有点看不懂，你要说优先查询本地这个我是可以接受，但如果本地不存在不查询默认远程仓库这个我是觉得不太合理。
+当然，吐嘈归吐嘈，希望后续有所改进吧。
+** 远程仓库
+Conan 提供了几个官方和社区的远端供选择，默认的，安装后会自动配置 Conan Center 这个源：
++ conan-center: https://bintray.com/conan/conan-center
++ bincrafters（开源社区源） : https://bintray.com/bincrafters/public-conan
+
+远程仓库的基本管理命令：
+#+begin_src text
+# 添加源
+conan remote add my-repo http://my-repo.com/xxx
+
+# 或者使用insert来将其作为首个源
+conan remote update my-repo http://my-repo.com/xxx --insert=0
+
+# 展示所有源
+conan remote list
+
+# 删除一个源
+conan remote remove my-repo
+#+end_src
+** 依赖库的一些信息
+如果想知道某个库的信息，可以如下操作:
+#+begin_src text
+❯ conan inspect spdlog/1.8.2
+name: spdlog
+version: 1.8.2
+url: https://github.com/conan-io/conan-center-index
+homepage: https://github.com/gabime/spdlog
+license: MIT
+author: None
+description: Fast C++ logging library
+topics: ('conan', 'spdlog', 'logging', 'header-only')
+generators: ('cmake', 'cmake_find_package')
+exports: None
+exports_sources: ['CMakeLists.txt']
+short_paths: False
+apply_env: True
+build_policy: None
+revision_mode: hash
+settings: ('os', 'arch', 'compiler', 'build_type')
+options:
+    fPIC: [True, False]
+    header_only: [True, False]
+    no_exceptions: [True, False]
+    shared: [True, False]
+    wchar_filenames: [True, False]
+    wchar_support: [True, False]
+default_options:
+    fPIC: True
+    header_only: False
+    no_exceptions: False
+    shared: False
+    wchar_filenames: False
+    wchar_support: False
+#+end_src
+** 使用
+*** 依赖库的使用方
+~Conan~ 使用 ~conanfile.txt~ 文件来描述工程依赖和导出相关的文件。
+
+官方的例子：
+
+~conanfile.txt~ 文件内容：
+#+begin_src text
+ [requires]
+ poco/1.9.4
+
+ [generators]
+ cmake
+#+end_src
+~[requires]~ 部分列出你所需要依赖的包的名称及版本。
+
+~[generators]~ 部分指定所需要的「生成器」，可以生成与 ~CMake~ 、 ~SCons~ 等工具的对接文件。
+
+~CMakeLists.txt~ 文件中要添加如下内容：
+#+begin_src cmake
+ cmake_minimum_required(VERSION 2.8.12)
+ project(MD5Encrypter)
+
+ add_definitions("-std=c++11")
+
+ include(${CMAKE_BINARY_DIR}/conanbuildinfo.cmake)
+ conan_basic_setup()
+
+ add_executable(md5 md5.cpp)
+ target_link_libraries(md5 ${CONAN_LIBS})
+#+end_src
+
+*注意* : 这里使用的生成器是 ~cmake~ ,它不会生成 ~FindXXX.cmake~ ，而是生成一个 ~conanbuildinfo.cmake~ ，你需要在 ~CMakeLists.txt~
+中手动初始化，这样对 ~CMakeLists.txt~ 的侵入性太强，不是很好。
+
+我在工程中是单独一个目录来安装这些第三方库，避免对工程有太多的污染，具体如下：
+#+begin_src text
+❯ tree
+.
+├── build
+├── CMakeLists.txt
+├── library
+│   ├── conanbuildinfo.txt
+│   ├── conanfile.txt
+│   ├── conaninfo.txt
+│   ├── conan.lock
+│   ├── Findyaml-cpp.cmake
+│   └── graph_info.json
+└── main.cpp
+
+2 directories, 8 files
+#+end_src
+
+所以我倾向使用 ~cmake_find_package~ 这个生成器：
+#+begin_src text
+[requires]
+yaml-cpp/0.6.3
+
+[generators]
+cmake_find_package
+#+end_src
+
+这样 ~CMakeLists.txt~ 中就可以直接使用 ~find_package~ :
+#+begin_src cmake
+cmake_minimum_required(VERSION 3.15)
+
+project(test)
+
+list(APPEND CMAKE_MODULE_PATH library)
+
+find_package(yaml-cpp REQUIRED)
+
+add_executable(${PROJECT_NAME} main.cpp)
+
+target_link_libraries(${PROJECT_NAME} PRIVATE yaml-cpp)
+#+end_src
+*** 依赖库的构建方
+
+** 包的一些参数
+在使用 ~conanfile.txt~ 指定依赖时，还可以同时指定一些可选参数：
+#+begin_src text
+ include(default)
+
+ [settings]
+ build_type=Debug # 指定编译模式为 debug
+
+ [options]
+ poco:shared=True  # 指定库为动态链接库
+ poco:enable_apacheconnector=False
+ openssl:shared=True
+#+end_src
+* 文档
++ [[https://docs.conan.io/en/latest/introduction.html][Introduction — conan 1.32.1 documentation]]
