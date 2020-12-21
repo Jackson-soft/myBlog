@@ -177,6 +177,15 @@ add_executable(${PROJECT_NAME} main.cpp)
 
 target_link_libraries(${PROJECT_NAME} PRIVATE yaml-cpp)
 #+end_src
+
+在使用过程中有时候用到 ~header_only~ 的库，比如 ~spdlog~ 会遇到 ~ERROR: Missing prebuilt package~ 这样的错误，这时候需要加上
+~--build missing~ 参数：
+#+begin_src shell
+conan install . --build missing
+#+end_src
+
+其主要原因是默认情况下， ~Conan~ 不会从源代码构建软件包。
+
 *** 依赖库的构建方
 
 ** 包的一些参数
