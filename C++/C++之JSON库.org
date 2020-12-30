@@ -1,5 +1,6 @@
-#+TITLE: /JSON for Modern C++/ 库
-* 基本
+#+TITLE: ~C++~ 之 ~JSON~ 库
+* ~JSON for Modern C++~ 库
+** 基本
 ** 自动类型
 #+BEGIN_SRC c++
 nlohmann::json j;
@@ -51,7 +52,7 @@ auto j = nlohmann::json::parse(" { \" happy \":true,\" pi \":3.141} ");
   std ::vector<uint8_t> v = {'t', 'r', 'u', 'e'};
   nlohmann::json j        = json ::parse(v);
 #+END_SRC
-* 与 /STL/ 的相似性
+** 与 /STL/ 的相似性
 ** 容器接口
 也可以像使用 /STL/ 容器一样来用 /JSON/ 。
 #+BEGIN_SRC c++
@@ -112,7 +113,7 @@ auto j = nlohmann::json::parse(" { \" happy \":true,\" pi \":3.141} ");
   json j_umset(c_umset); // both entries for "one" are used
   // maybe ["one", "two", "one", "four"]
 #+END_SRC
-* 结构体与 /json/ 之间的转换
+** 结构体与 /json/ 之间的转换
 如果想实现自定义结构体与 /json/ 之间的转换的话，必须在同一个 /namespace/ 下实现 /to_json/ 和 /from_json/ 两个函数。例如：
 #+BEGIN_SRC c++
   namespace Aquarius
@@ -144,7 +145,7 @@ nlohmann::json data(smsg);
 auto str = data.dump();
 #+END_SRC
 
-* /basic_json::value/
+** /basic_json::value/
 /basic_json/ 除了提供容器常用的接口 /operator[]/  和 /at/ 之外，还提供了 /value/ 成员函数用于取对象中的值，当值不存在的时候提供默认值。这个方法和 /Python/ 中的 /or/ 很像。
 
 #+BEGIN_SRC python
@@ -162,3 +163,92 @@ retun x or "default"
 #+END_SRC
 
 这个函数对于处理可选参数非常有用。
+* ~Boost.json~ 库
+** 说明
+在 ~Boost~ 1.75 版本中新增了一个 ~json~ 解析库。
+
+其使用方法有两种：
++ 链接动态库： 引入头文件 ~boost/json.hpp~ ，同时链接对应的动态库。
++ ~header only~ : 引入头文件 ~boost/json/src.hpp~ 即可。
+
+这里需要注意的时在使用 ~conan~ 安装的 ~Boost~ 的时候默认是动态库的方式，如果想使用 ~header only~ 需要在 ~conanfile.txt~ 中标
+注。
+** 使用
+*** 基本
+**** 解码
+#+begin_src c++
+value jv = parse( "[1, 2, 3]" );
+#+end_src
+**** 编码
+#+begin_src c++
+object obj;                                                     // construct an empty object
+obj[ "pi" ] = 3.141;                                            // insert a double
+obj[ "happy" ] = true;                                          // insert a bool
+obj[ "name" ] = "Boost";                                        // insert a string
+obj[ "nothing" ] = nullptr;                                     // insert a null
+obj[ "answer" ].emplace_object()["everything"] = 42;            // insert an object with 1 element
+obj[ "list" ] = { 1, 0, 2 };                                    // insert an array with 3 elements
+obj[ "object" ] = { {"currency", "USD"}, {"value", 42.99} };    // insert an object with 2 elements
+#+end_src
+*** 结构体
+类似于 ~nlohmann::json~ , ~boost.json~ 也提供结构体与 ~json~ 之间的转换，而且还十分相似：
+#+begin_src c++
+#pragma once
+
+#include <boost/json.hpp>
+#include <cstdint>
+#include <string>
+#include <string_view>
+
+namespace uranus::net
+{
+class body
+{
+public:
+    body(std::uint32_t c, std::string_view m, std::string_view d): code(c), message(m), data(d) {}
+
+    std::uint32_t code;
+    std::string message;
+    std::string data;
+};
+
+void tag_invoke(boost::json::value_from_tag, boost::json::value &jv, body const &b)
+{
+    auto &jo      = jv.emplace_object();
+    jo["code"]    = b.code;
+    jo["message"] = b.message;
+    jo["data"]    = b.data;
+}
+
+body tag_invoke(boost::json::value_to_tag<body>, boost::json::value const &jv)
+{
+    auto &jo = jv.as_object();
+    return body(jo.at("code").as_uint64(), jo.at("message").as_string().data(), jo.at("data").as_string().data());
+}
+}  // namespace uranus::net
+#+end_src
+
+其中， ~boost::json::value_from_tag~ 是作为标签存在的，方便 ~Boost.JSON~ 分辨序列化函数的。
+
+具体的使用如下：
+#+begin_src c++
+#pragma once
+
+#include "doctest.h"
+#include "models.hpp"
+#include <iostream>
+
+TEST_CASE("json parse")
+{
+    aquarius::clientMsg cm{"1", "2", "3", "4"};
+    auto v = boost::json::value_from(cm);
+    std::cout << v.as_object().at("cmd").as_string() << std::endl;
+
+    boost::json::value vj{{"cmd", "1"}, {"roomid", "2"}, {"clientid", "3"}, {"msg", "4"}};
+    auto myobj = boost::json::value_to<aquarius::clientMsg>(vj);
+    std::cout << myobj.clientid << std::endl;
+}
+#+end_src
+
+* 文档
++ [[https://www.boost.org/doc/libs/1_75_0/libs/json/doc/html/json/quick_look.html][Quick Look - 1.75.0]]
