@@ -240,13 +240,13 @@ body tag_invoke(boost::json::value_to_tag<body>, boost::json::value const &jv)
 
 TEST_CASE("json parse")
 {
-    aquarius::clientMsg cm{"1", "2", "3", "4"};
+    aquarius::net::body cm{1, "2", "3"};
     auto v = boost::json::value_from(cm);
-    std::cout << v.as_object().at("cmd").as_string() << std::endl;
+    std::cout << v.as_object().at("message").as_string() << std::endl;
 
-    boost::json::value vj{{"cmd", "1"}, {"roomid", "2"}, {"clientid", "3"}, {"msg", "4"}};
-    auto myobj = boost::json::value_to<aquarius::clientMsg>(vj);
-    std::cout << myobj.clientid << std::endl;
+    boost::json::value vj{{"code", 1}, {"message", "2"}, {"data", "3"}};
+    auto myobj = boost::json::value_to<aquarius::net::body>(vj);
+    std::cout << myobj.code << std::endl;
 }
 #+end_src
 
