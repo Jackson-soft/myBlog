@@ -173,6 +173,16 @@ retun x or "default"
 
 这里需要注意的时在使用 ~conan~ 安装的 ~Boost~ 的时候默认是动态库的方式，如果想使用 ~header only~ 需要在 ~conanfile.txt~ 中标
 注。
+#+begin_src text
+[requires]
+boost/1.75.0
+
+[generators]
+cmake_find_package
+
+[options]
+boost:header_only=True
+#+end_src
 ** 使用
 *** 基本
 **** 解码
