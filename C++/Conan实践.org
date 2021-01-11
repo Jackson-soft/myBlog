@@ -96,6 +96,9 @@ default_options:
     wchar_filenames: False
     wchar_support: False
 #+end_src
+
+这里需要注意的是 ~options~ 项，因为如果我们想在 ~conanfile.txt~ 的 ~[options]~ 中对某个库做一些配置的话，库支持的可配置项都是从
+这里获取的。
 ** 使用
 *** 依赖库的使用方
 ~Conan~ 使用 ~conanfile.txt~ 文件来描述工程依赖和导出相关的文件。
@@ -200,6 +203,7 @@ conan install . --build missing
  poco:shared=True  # 指定库为动态链接库
  poco:enable_apacheconnector=False
  openssl:shared=True
+ spdlog:header_only=True #指定库为 header only
 #+end_src
 * 文档
 + [[https://docs.conan.io/en/latest/introduction.html][Introduction — conan 1.32.1 documentation]]
