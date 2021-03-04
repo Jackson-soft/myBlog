@@ -1,0 +1,37 @@
+#+TITLE: 编码规范
+* 命名约定
+** 文件命名
+文件名要全部小写, 可以包含下划线 (_) 或连字符 (-), 依照项目的约定. 如果没有约定, 那么 “_” 更好.
+** 变量命名
+变量 (包括函数参数) 和数据成员名一律首字母小写, 类的成员变量以下划线结尾。
+如: ~aLocalVariable~, ~aClassDataMember_~.
+** 常量命名
+声明为 constexpr 或 const 的变量, 或在程序运行期间其值始终保持不变的, 命名时以 “k” 开头, 大小写混合. 例如:
+#+begin_src c++
+const int kDaysInAWeek = 7;
+#+end_src
+** 类型命名
+所有类型命名 —— 类, 结构体, 类型定义 (typedef), 枚举, 类型模板参数 —— 均使用相同约定, 即以大写字母开始, 每个单词首字母均
+大写, 不包含下划线。例如： ~MyExcitingClass~ , ~MyExcitingEnum~ 。
+
+#+begin_src c++
+// 类和结构体
+class UrlTable { ...
+class UrlTableTester { ...
+struct UrlTableProperties { ...
+
+// 类型定义
+typedef hash_map<UrlTableProperties *, string> PropertiesMap;
+
+// using 别名
+using PropertiesMap = hash_map<UrlTableProperties *, string>;
+
+// 枚举
+enum UrlTableErrors { ...
+#+end_src
+** 函数命名
+一般来说, 函数名的每个单词首字母大写 (即 “驼峰变量名” 或 “帕斯卡变量名”), 没有下划线. 对于首字母缩写的单词, 更倾向于将它们视作一个单词进行首字母大写 (例如, 写作 ~StartRpc()~ 而非 ~StartRPC()~).
+** 命名空间命名
+命名空间以小写字母命名.最高级命名空间的名字取决于项目名称.要注意避免嵌套命名空间的名字之间和常见的顶级命名空间的名字之间发生冲突.
+** 枚举命名
+枚举的命名应当和常量或宏一致: ~kEnumName~ 或是 ~ENUM_NAME~.
