@@ -29,6 +29,7 @@ done
 # Set Zsh as your default shell
 chsh -s /bin/zsh
 #+END_SRC
+*说明* : ~zsh~ 目前在新版本的 ~Mac OS~ 中是默认自带的，不需要自行安装。
 ** 配置
 在 /.zpreztorc/ 中修改如下配置
 #+BEGIN_SRC shell
@@ -56,7 +57,8 @@ zstyle :prezto:module:prompt theme powerlevel10k
 #+END_SRC
 *** 字体安装
 #+BEGIN_SRC shell
-brew cask install font-sourcecodepro-nerd-font
+brew tap homebrew/cask-fonts
+brew install --cask font-fira-code-nerd-font
 #+END_SRC
 *** 配置
 在 /.p10k.zsh/ 中修改下面的配置
@@ -66,21 +68,19 @@ POWERLEVEL9K_LEFT_PROMPT_ELEMENTS=(dir dir_writable vcs)
 *** /vscode/ 相关配置
 必须的字体安装：
 #+BEGIN_SRC shell
-# homebrew
-brew cask install font-firacode-nerd-font
-
 # manjaro
 yay -S nerd-fonts-fira-code
 #+END_SRC
 
-如果在 /vscode/ 的终端下也想使用 /Powerlevel9k/ 主题的话，要添加如下配置：
+如果在 /vscode/ 的终端下也想使用 /Powerlevel10k/ 主题的话，要添加如下配置：
 #+BEGIN_SRC json
 "terminal.integrated.cursorBlinking": true,
-"terminal.integrated.fontFamily": "FuraCode Nerd Font",
+"terminal.integrated.fontFamily": "FiraCode Nerd Font",
 "terminal.integrated.fontSize": 14,
 #+END_SRC
 * /fzf/
-[[https://github.com/junegunn/fzf][fzf]] 是一个模糊查找工具，其主要功能有查找文件、历史命令查询、快速进入目录。如果配合 /find/ 的替代命令 /fd/ 口感更佳。
+[[https://github.com/junegunn/fzf][fzf]] 是一个模糊查找工具，其主要功能有查找文件、历史命令查询、快速进入目录。如果配合 /find/ 的替代命令 /fd/ 口感更佳。（目前我
+用 [[https://github.com/lotabout/skim][skim]] 替换了 ~fzf~ ）
 ** 安装
 #+BEGIN_SRC shell
 # install fd & fzf
