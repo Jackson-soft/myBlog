@@ -10,8 +10,9 @@
 + ⌘ + 方向键:  按方向切换标签页
 + ⌘ + Option + 方向键:  切换到指定位置的分屏
 + ⌘ + 数字: 切换标签页
+
 * /zsh/
-/zsh/ 的功能极其强大，只是配置过于复杂，所以我用 [[https://github.com/sorin-ionescu/prezto][prezto]] 来管理插件。
+/zsh/ 的功能极其强大，但配置过于复杂，所以我用 [[https://github.com/sorin-ionescu/prezto][prezto]] 来管理插件。
 ** 安装
 #+BEGIN_SRC shell
 # install zsh
@@ -32,7 +33,7 @@ chsh -s /bin/zsh
 *说明* : ~zsh~ 目前在新版本的 ~Mac OS~ 中是默认自带的，不需要自行安装。
 ** 配置
 在 /.zpreztorc/ 中修改如下配置
-#+BEGIN_SRC shell
+#+BEGIN_SRC conf
 zstyle ':prezto:load' pmodule \
   'environment' \
   'terminal' \
@@ -52,7 +53,7 @@ zstyle ':prezto:load' pmodule \
 [[https://github.com/romkatv/powerlevel10k][Powerlevel10k]] 是一款“花哨”的 /zsh/ 主题。但必须有 [[https://github.com/powerline/fonts][Powerline-Fonts]] 作为漂亮界面的支持，我使用的是 [[https://github.com/ryanoasis/nerd-fonts][Nerd-Fonts]] 字体，具体选择看大家个人的口味。
 *** 安装
 在 /.zpreztorc/ 中修改以下配置
-#+BEGIN_SRC shell
+#+BEGIN_SRC conf
 zstyle :prezto:module:prompt theme powerlevel10k
 #+END_SRC
 *** 字体安装
@@ -62,10 +63,10 @@ brew install --cask font-fira-code-nerd-font
 #+END_SRC
 *** 配置
 在 /.p10k.zsh/ 中修改下面的配置
-#+BEGIN_SRC shell
+#+BEGIN_SRC conf
 POWERLEVEL9K_LEFT_PROMPT_ELEMENTS=(dir dir_writable vcs)
 #+END_SRC
-*** /vscode/ 相关配置
+*** ~vscode~ 相关配置
 必须的字体安装：
 #+BEGIN_SRC shell
 # manjaro

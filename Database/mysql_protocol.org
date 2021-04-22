@@ -1,0 +1,20 @@
+#+TITLE: ~Mysql Protocol~ 分析
+* 说明
+* 流程
+** 数据包
+*说明* :
+- 数据包最大上限是 ~16M~
+- 数据包序列号（ ~Sequence ID~ ）的规则是：每个新命令包以 0 开始，然后重置为 0 。
+
+包体载荷如下：
+
+| 类型        | 名称           | 说明       |
+|-------------+----------------+------------|
+| int<3>      | ~payload_length~ | 包的长度   |
+|-------------+----------------+------------|
+| int<1>      | ~sequence_id~    | 包体序列号 |
+|-------------+----------------+------------|
+| string<var> | ~payload~        | 包的实际载荷     |
+
+* 文档
+- [[https://dev.mysql.com/doc/internals/en/client-server-protocol.html][MySQL :: MySQL Internals Manual :: 14 MySQL Client/Server Protocol]]
