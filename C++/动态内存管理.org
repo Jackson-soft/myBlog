@@ -48,7 +48,6 @@ void free( void* ptr );
 2. 调用构造函数生成类对象；
 3. 返回相应指针。
 
-*** 步骤
 ** ~new~ 操作符
 ~operator new~ （或 ~operator new[]~ ）：是一个标准库函数，可以重载，定义于头文件 ~<new>~ 中。
 *** 全局重载
