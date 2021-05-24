@@ -105,9 +105,6 @@
                      ((\` suspicious) '(propertize " ?" 'face 'warning)))))
                "%1 "
 
-               ;; lsp-mode
-               '(:eval (lsp-modeline--diagnostics-update-modeline))
-
                'mode-line-end-spaces
                ))
 
