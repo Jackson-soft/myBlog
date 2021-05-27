@@ -5,21 +5,21 @@
 定制的过程其实就是对 [[https://www.gnu.org/software/emacs/manual/html_node/elisp/Mode-Line-Format.html][mode-line-format]] 变量做一些自定义的赋值。
 
 * ~Mode Line~ 变量
-- ~mode-line-mule-info~ : 显示当前语言环境、编码信息和输入法；
-- ~mode-line-modified~ : 显示当前内容是否被修改，**表示已经被修改，--表示没有被修改，%%表示只读，%*表示只读但是被修改；
-- ~mode-line-frame-identification~ : 用来标识当前窗口；
-- ~mode-line-buffer-identification~ : 用来表示当前buffer；
-- ~mode-line-position~ ：用来表示在buffer中的位置，可显示位置百分比、buffer大小、当前行号和列号；
-- ~vc-mode~ ：显示版本管理信息；
-- ~mode-line-modes~ ：显示当前major和minor modes；
-- ~mode-line-remote~ ：用来显示当前buffer的default-directory是否是远程文件夹；
-- ~mode-line-client~ ：用来表示emacsclient窗口；
-- ~mode-name~ ： 显示当前buffer的major mode；
-- ~mode-line-front-space~ ：显示在mode-line最前面；
-- ~mode-line-end-spaces~ ：显示在mode-line最后面；
-- ~mode-line-misc-info~ ：显示杂项信息；
-- ~minor-mode-alis~ ：包含当前buffer激活的所有minor modes；
-- ~global-mode-string~ ： 显示日期、时间、负载等一些辅助信息。
+- ~mode-line-mule-info~ *::* 显示当前语言环境、编码信息和输入法；
+- ~mode-line-modified~ *::* 显示当前内容是否被修改， ~**~ 表示已经被修改， ~--~ 表示没有被修改， ~%%~ 表示只读， ~%*~ 表示只读但是被修改；
+- ~mode-line-frame-identification~ *::* 用来标识当前窗口；
+- ~mode-line-buffer-identification~ *::* 用来表示当前 ~buffer~ ；
+- ~mode-line-position~ *::* 用来表示在 ~buffer~ 中的位置，可显示位置百分比、 ~buffer~ 大小、当前行号和列号；
+- ~vc-mode~ *::* 显示版本管理信息；
+- ~mode-line-modes~ *::* 显示当前major和minor modes；
+- ~mode-line-remote~ *::* 用来显示当前buffer的 ~default-directory~ 是否是远程文件夹；
+- ~mode-line-client~ *::* 用来表示 ~emacsclient~ 窗口；
+- ~mode-name~ *::* 显示当前buffer的 ~major mode~ ；
+- ~mode-line-front-space~ *::* 显示在mode-line最前面；
+- ~mode-line-end-spaces~ *::* 显示在mode-line最后面；
+- ~mode-line-misc-info~ *::* 显示杂项信息；
+- ~minor-mode-alis~ *::* 包含当前buffer激活的所有minor modes；
+- ~global-mode-string~ *::* 显示日期、时间、负载等一些辅助信息。
 
 * 格式化标签
 
@@ -45,44 +45,39 @@
 #+begin_src elisp
 ;; Mode line settings
 (setq-default mode-line-format
-              (list
-               "%e"
+              '("%e"
                mode-line-front-space
                mode-line-modified
-               " %1"
+
                ;; the buffer name; the file name as a tool tip
-               '(:eval (propertize " %b " 'face 'font-lock-keyword-face
+               (:eval (propertize " %b " 'face 'font-lock-keyword-face
                                    'help-echo (buffer-file-name)))
 
                ;; line and column
-               '(:eval (propertize " (%02l,%02c) " 'face 'font-lock-keyword-face))
+               (:eval (propertize " (%02l,%02c) " 'face 'font-lock-keyword-face))
 
                ;; relative position, size of file
-               '(:eval (propertize " [%p/%I] " 'face 'font-lock-constant-face))
+               (:eval (propertize " [%p/%I] " 'face 'font-lock-constant-face))
 
                ;; spaces to align right
-               '(:eval (propertize
+               (:eval (propertize
                         " " 'display
                         `((space :align-to (- (+ right right-fringe right-margin)
-                                              ,70)))
-                        'face 'mode-line))
+                                              ,65)))))
 
                ;; global-mode-string goes in mode-line-misc-info
-               '(:eval mode-line-misc-info)
+               (:eval mode-line-misc-info)
 
                ;; buffer encode
-               '(:eval (propertize (format " %s " buffer-file-coding-system) 'face 'font-lock-comment-face))
+               (:eval (propertize (format " %s " buffer-file-coding-system) 'face 'font-lock-comment-face))
 
                ;; the current major mode
-               '(:eval (propertize "%m" 'face 'font-lock-string-face))
-
-               ;;minor-mode-alist
+               (:eval (propertize " %m " 'face 'font-lock-string-face))
 
                ;; git info
-               '(:eval '(vc-mode vc-mode))
-               " "
+               (:eval '(vc-mode vc-mode))
 
-               '(:eval
+               (:eval
                  (when
                      (and (bound-and-true-p flycheck-mode)
                           (or flycheck-current-errors
@@ -99,13 +94,12 @@
                              (face (cond (no-errors 'error)
                                          (no-warnings 'warning)
                                          (t 'success))))
-                        (propertize (format "[%s/%s]" (or no-errors 0) (or no-warnings 0))
+                        (propertize (format " [%s/%s] " (or no-errors 0) (or no-warnings 0))
                                     'face face)))
                      ((\` interrupted) " -")
                      ((\` suspicious) '(propertize " ?" 'face 'warning)))))
-               "%1 "
 
-               'mode-line-end-spaces
+               mode-line-end-spaces
                ))
 
 (set-face-attribute 'mode-line nil
