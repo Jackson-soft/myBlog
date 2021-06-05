@@ -1,0 +1,50 @@
+#+TITLE: ~Emacs~ 中的一些基本概念
+* 说明
+由于 ~Emacs~ 是一款算是比较久远的编译器，所以相对于一些现代的编辑器或 ~IDE~ ，在有些概念上有会有一些理解上的出入，这里作一下纪录。
+* 概念
+** 缓冲区 ( ~buffer~ )
+定义：
+
+The text you are editing in Emacs resides in an object called a buffer. Each time you visit a file, a buffer is used to
+hold the file’s text. Each time you invoke Dired, a buffer is used to hold the directory listing. If you send a message
+with C-x m, a buffer is used to hold the text of the message. When you ask for a command’s documentation, that appears
+in a buffer named *Help*.
+
+~emacs~ 把文件加载进 ~buffer~ , 用户直接操作 ~buffer~ , 只有当用户确定把 ~buffer~ 中所做的修改写入文件时, ~Emacs~ 才把 ~buffer~ 中的内容写入文件。
+这个概念与目前市在的上编辑器是一样的，理解上应该是没什么问题。
+
+这里有一个 ~minibuffer~ 的概念，它是 ~emacs~ 的 ~frame~ 最下方用来显示一些信息或处理交互命令用的窗口。
+
+** 缓冲区窗口 （ ~window~ ）
+定义：
+
+Emacs can split a frame into two or many windows. Multiple windows can display parts of different buffers, or different
+parts of one buffer. Multiple frames always imply multiple windows, because each frame has its own set of windows. Each
+window belongs to one and only one frame.
+
+~Emacs~ 中的 ~window~ 是用来显示 ~buffe~ 的一个区域。
+
+** ~Frame~
+首先来看一下官方文档的说明：
+
+When Emacs is started on a graphical display, e.g., on the X Window System, it occupies a graphical system-level display
+region. In this manual, we call this a frame, reserving the word “window” for the part of the frame used for displaying
+a buffer. A frame initially contains one window, but it can be subdivided into multiple windows. A frame normally also
+contains a menu bar, tool bar, and echo area.
+
+其实就是说在 ~Emacs~ 的概念里 ~frame~ 是我们现代意义的所谓的窗口( ~window~ ) 。一个 ~frame~ 是带有标题栏，菜单栏并且可以拆分成多个 ~window~ 的窗口。
+
+~window~ 和 ~frame~ 是与目前的我们的理解有些出入的，应该说是刚好相反的，所以要注意消化一下。
+** ~Kill-ring~
+这货如果要强行翻译的话应该叫剪切环，对应目前的剪切板( ~clipboard~ )概念。
+
+~kill-ring~ 这个 ~kill~ 就涉及到 ~Emacs~ 中的两种不同的处理方式：
++ ~kill~ :: 这个对应的是剪切操作，内容会放入 ~kill-ring~ 中，你如果想粘贴，是可以从作 ~yank~ ( ~C-y~ ) 操作的。
++ ~delete~ :: 这个就是删除，内容并不会放入 ~kill-ring~ 中。比如 ~delete-char~ ( ~C-d~ ) 。
+
+这里又涉及到另外一个操作叫 ~yank-pop~ （ ~M-y~ ） ，是用来选择你要粘贴（ ~yank~ ） 哪一条内容。
+
+这一块的概念是没什么问题，可能就是单词不一样，有时候不注意会不知道怎么回事。
+
+* 文档
++ [[https://www.gnu.org/software/emacs/manual/html_node/emacs/index.html][The Emacs Editor]]
