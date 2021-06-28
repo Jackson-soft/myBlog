@@ -32,7 +32,7 @@ region. In this manual, we call this a frame, reserving the word “window” fo
 a buffer. A frame initially contains one window, but it can be subdivided into multiple windows. A frame normally also
 contains a menu bar, tool bar, and echo area.
 
-其实就是说在 ~Emacs~ 的概念里 ~frame~ 是我们现代意义的所谓的窗口( ~window~ ) 。一个 ~frame~ 是带有标题栏，菜单栏并且可以拆分成多个 ~window~ 的窗口。
+其实就是说在 ~Emacs~ 的概念里 ~frame~ 是我们现代意义的所谓的窗口。一个 ~frame~ 是带有标题栏，菜单栏并且可以拆分成多个 ~window~ 的窗口。
 
 ~window~ 和 ~frame~ 是与目前的我们的理解有些出入的，应该说是刚好相反的，所以要注意消化一下。
 ** ~Kill-ring~
