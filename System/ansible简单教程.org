@@ -14,17 +14,17 @@ sudo pip3 install ansible
 /ansible/ 执行的时候会按照以下顺序查找配置项:
 - ~ANSIBLE_CONFIG~ (环境变量)
 - ~ansible.cfg~ (当前目录下)
-- ~.ansible.cfg~ (用户家目录下)
+- ~.ansible.cfg~ (用户目录下)
 - ~/etc/ansible/ansible.cfg~
 ** Inventory文件
 *** 基本说明
-Ansible可同时操作属于一个组的多台主机，组和主机之间的关系通过Inventory文件配置。
+~Ansible~ 可同时操作属于一个组的多台主机，组和主机之间的关系通过 =Inventory= 文件配置。
 
 从配置文件中我们可以看到默认在 ~/etc/ansible/hosts~ ，但一般情况下应该是没有的。我是在项目的目录中创建 ~ansible~ 目录，其中
 配置 ~hosts~ 和 ~playbook~ 脚本。
 [[./ansible_file.png]]
 *** ~hosts~
-一般 ~hosts~ 长这样：
+一般 ~hosts~ 长这样，基本格式是 ~INI~ ：
 #+begin_src text
 mail.example.com
 
@@ -40,7 +40,12 @@ three.example.com
 
 *说明*:
 
-方括号[]中是组名,用于对系统进行分类,便于对不同系统进行个别的管理.
+方括号[]中是分组名,用于对系统进行分类,便于对不同系统进行个别的管理.
+
+在执行脚本的时候需要我们指定分组配置：
+#+begin_src shell
+ansible-playbook -i ./hosts task.yaml
+#+end_src
 *** 参数说明
 官方文档上的介绍：
 #+begin_src text
@@ -78,7 +83,7 @@ ansible_python_interpreter
       与 ansible_python_interpreter 的工作方式相同,可设定如 ruby 或 perl 的路径....
 #+end_src
 ** /Playbook/
-简单的示例：
+*** 简单的示例：
 #+begin_src yaml
 ---
 - hosts: test  # 指明执行任务的主机，可以是一个或多个由冒号分隔主机组
@@ -114,8 +119,62 @@ ansible_python_interpreter
         service: name=hall state=started enabled=yes  # 系统 service 行为
 #+end_src
 *说明*:
-
 - 从源目录复制文件到远程服务器， /ansible/ 是不会自动创建目录的，如果想要这种行为，则在 /src/ 参数中的路径后添加 / 。
+- 在 ~mode~ 这块，可以是写成 ~0775~ 也可以是 ~u=rw,g=r,o=r~ 也可以是 ~u+rw,g-wx,o-rwx~ ，但建议还是 ~0644~ 数字这种，相对来说比较直观。
+
+*** 参数
+在配置任务前，可以定义一些常用的参数之类的，比如：
+#+begin_src yaml
+vars:
+    service_name: saturn
+    binary_src: ../
+#+end_src
+
+*** 管理服务
+#+begin_src yaml
+- name: restart service
+  service:
+      name: "{{ service_name }}"
+      state: restarted
+      enabled: yes
+#+end_src
+
+*** 回调通知
+很多时候我们部署服务后要重启或更新等等后续操作，这个时候我就可以定义 [[https://docs.ansible.com/ansible/latest/user_guide/playbooks_handlers.html#handlers][Handlers]] 来做这个事情。
+
+#+begin_src yaml
+---
+- name: Verify apache installation
+  hosts: webservers
+  vars:
+    http_port: 80
+    max_clients: 200
+  remote_user: root
+  tasks:
+  - name: Ensure apache is at the latest version
+    ansible.builtin.yum:
+      name: httpd
+      state: latest
+
+  - name: Write the apache config file
+    ansible.builtin.template:
+      src: /srv/httpd.j2
+      dest: /etc/httpd.conf
+    notify:
+    - Restart apache
+
+  - name: Ensure apache is running
+    ansible.builtin.service:
+      name: httpd
+      state: started
+
+  handlers:
+    - name: Restart apache
+      ansible.builtin.service:
+        name: httpd
+        state: restarted
+#+end_src
+这里注意 ~tasks~ 中任务的 ~notify~ 要跟 ~handlers~ 中的 ~name~ 要一致。
 * 命令
 部署命令：
 #+begin_src shell
@@ -124,5 +183,6 @@ ansible-playbook -i ansible/hosts ansible/hall.yml
 
 *说明*: 这里 ~-i~ 是指定主机配置。
 * 文档
-+ [[https://ansible-tran.readthedocs.io/en/latest/index.html][Ansible中文权威指南 — 国内最专业的Ansible中文官方学习手册]]
-+ [[https://docs.ansible.com/ansible/latest/reference_appendices/playbooks_keywords.html#play][Playbook Keywords — Ansible Documentation]]
+- [[https://docs.ansible.com/ansible/latest/collections/ansible/index.html][Collections]]
+- [[https://ansible-tran.readthedocs.io/en/latest/index.html][Ansible中文权威指南 — 国内最专业的Ansible中文官方学习手册]]
+- [[https://docs.ansible.com/ansible/latest/reference_appendices/playbooks_keywords.html#play][Playbook Keywords — Ansible Documentation]]

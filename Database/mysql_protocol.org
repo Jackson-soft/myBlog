@@ -1,5 +1,8 @@
+:PROPERTIES:
+:END:
 #+TITLE: ~Mysql Protocol~ 分析
 * 说明
+本文是基于 ~mysql 8.0~ 以上协议。
 * 流程
 ** 数据包
 *说明* :
@@ -15,6 +18,53 @@
 | int<1>      | ~sequence_id~    | 包体序列号 |
 |-------------+----------------+------------|
 | string<var> | ~payload~        | 包的实际载荷     |
+** 交互流程
+* 公共数据包
+** OK
+** ERROR
+** EOF
+* 协议
+** 说明
+客户端的命令报文的消息体如下：
+#+begin_src text
+1 byte     命令标识符
+n bytes    参数
+#+end_src
+
+*命令标识符* : 标识当前请求消息的类型 (协议枚举在 ~include/my_command.h~ )
+*参数* : 参数是可选项
+** 文本协议 （ [[https://dev.mysql.com/doc/internals/en/text-protocol.html][Text Protocol]] ）
+*** 说明
+目前在 ~mysql 8.0~ 中有部分命令是废弃掉的（可以参照头文件 ~include/my_command.h~ 中的命令枚举）。
+
+包括如下几个命令：
+- ~COM_CREATE_DB~
+- ~COM_DROP_DB~
+- ~COM_CONNECT~
+- ~COM_TIME~
+- ~COM_DAEMON~
+*** 查询
+[[https://dev.mysql.com/doc/internals/en/com-query.html][COM_QUERY]] 是客户端发送给服务端立即执行的文本查询语句。
+
+包体：
+#+begin_src text
+1              [03] COM_QUERY
+string[EOF]    the query the server shall execute
+#+end_src
+
+[[https://dev.mysql.com/doc/internals/en/com-query-response.html#packet-COM_QUERY_Response][COM_QUERY Response]] 是服务端返回给客户端的查询结果集。
+
+** 预处理语句 （ [[https://dev.mysql.com/doc/internals/en/prepared-statements.html][Prepared Statements]] ）
+*** ~NULL-Bitmap~
+在预处理语句中最重要的概念就是 [[https://dev.mysql.com/doc/internals/en/null-bitmap.html][NULL-Bitmap]] 。主要是用于二进制协议中标识 ~NULL~ 数据列。
+*** 二进制行数据 （ [[https://dev.mysql.com/doc/internals/en/binary-protocol-resultset-row.html][Binary Protocol Resultset Row]] ）
+
+包体：
+#+begin_src text
+1              packet header [00]
+string[$len]   NULL-bitmap, length: (column-count + 7 + 2) / 8
+string[$len]   values
+#+end_src
 
 * 文档
 - [[https://dev.mysql.com/doc/internals/en/client-server-protocol.html][MySQL :: MySQL Internals Manual :: 14 MySQL Client/Server Protocol]]
