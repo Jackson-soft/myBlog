@@ -55,6 +55,17 @@ n bytes    参数
 
 完整流程如下：
 #+begin_src go
+func encryptPassword(password string, seed []byte, pub *rsa.PublicKey) ([]byte, error) {
+	plain := make([]byte, len(password)+1)
+	copy(plain, password)
+	for i := range plain {
+		j := i % len(seed)
+		plain[i] ^= seed[j]
+	}
+	sha1 := sha1.New()
+	return rsa.EncryptOAEP(sha1, rand.Reader, pub, plain, nil)
+}
+
 // 处理认证过程
 func (p *PacketIO) HandleAuthResult(password, plugin string) error {
 	authData, newPlugin, err := p.readAuthResult()
@@ -94,13 +105,13 @@ func (p *PacketIO) HandleAuthResult(password, plugin string) error {
 			return nil
 		case 1:
 			switch authData[0] {
-			case cachingSha2PasswordFastAuthSuccess:
+			case 3:
 				_, err := p.ReadOK()
 				return err
-			case cachingSha2PasswordPerformFullAuthentication:
+			case 4:
 				// 这里需要用服务器密钥加密密码后发送
 				data := make([]byte, packetHeaderSize+1)
-				data[packetHeaderSize] = cachingSha2PasswordRequestPublicKey
+				data[packetHeaderSize] = 2
 				if err := p.WritePacket(data); err != nil {
 					return err
 				}
