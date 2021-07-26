@@ -33,6 +33,116 @@ n bytes    参数
 
 *命令标识符* : 标识当前请求消息的类型 (协议枚举在 ~include/my_command.h~ )
 *参数* : 参数是可选项
+** 登录过程
+*** 说明
+其实客户端登录服务端本来是没什么可说的，但 ~mysql 8.0~ 后添加了对 ~caching_sha2_password~ 插件的支持。再加上对低版本的兼容，让整个过程变的比较麻烦。
+参照这篇文章 [[https://insidemysql.com/preparing-your-community-connector-for-mysql-8-part-2-sha256/][Preparing your Community Connector for MySQL 8 – part 2 – SHA256]]
+*** 流程
+1. 客户端连上服务端后，服务端首先给客户端发送包含各种信息的 [[https://dev.mysql.com/doc/internals/en/connection-phase-packets.html#packet-Protocol::HandshakeV10][Protocol::HandshakeV10]] 包；
+2. 客户端回复服务端登录响应包 [[https://dev.mysql.com/doc/internals/en/connection-phase-packets.html#packet-Protocol::HandshakeResponse41][Protocol::HandshakeResponse41]] ，包含用户名密码等等登录相关信息和 ~auth plugin name~ ；
+3. 服务端给客户端下发 [[https://dev.mysql.com/doc/internals/en/connection-phase-packets.html#packet-Protocol::AuthSwitchRequest][Protocol::AuthSwitchRequest]] ，包含 ~plugin name~ 和密钥 ~auth plugin data~ ;
+
+   这里有就两种情况，主要是客户端在发送登录响应包的时候的 ~auth plugin name~ 的值不同：
+   - ~mysql_native_password~ :: 包体中会包含要切换到新的 ~plugin name~ 和新的密钥 ~auth plugin data~ 。
+   - ~caching_sha2_password~ :: 包体将变成 [[https://dev.mysql.com/doc/internals/en/connection-phase-packets.html#packet-Protocol::AuthMoreData][Protocol::AuthMoreData]] ，
+     这个数据只有一个字节，内容是3或4；如果是3，则意味着接下来的包是 ~OK~ 包。如果是4，则意味着要做完全身份验证。
+4. 客户端发送加密后的登录密码包 [[https://dev.mysql.com/doc/internals/en/connection-phase-packets.html#packet-Protocol::AuthSwitchResponse][Protocol::AuthSwitchResponse]] 。
+5. 服务端下发登录结果包，成功则 ~OK~ ，失败则 ~ERROR~ 。
+*** 完全身份验证
+当服务器缓存不包含密码哈希时，服务器要求输入完整的密码，以便填充缓存。这可以通过两种方式之一完成：
+- 如果使用 ~SSL/TLS~ 连接已经是安全的，则以纯文本传递它。
+- 如果连接不安全，则使用服务器公钥加密它。
+
+完整流程如下：
+#+begin_src go
+// 处理认证过程
+func (p *PacketIO) HandleAuthResult(password, plugin string) error {
+	authData, newPlugin, err := p.readAuthResult()
+	if err != nil {
+		return err
+	}
+
+	if len(newPlugin) != 0 {
+		plugin = newPlugin
+
+		if len(authData) != 0 {
+			p.salt_ = authData
+		}
+
+		authResp, err := p.Auth(password, plugin)
+		if err != nil {
+			return err
+		}
+
+		if err = p.WriteAuthSwitchResponse(authResp); err != nil {
+			return err
+		}
+
+		authData, newPlugin, err = p.readAuthResult()
+		if err != nil {
+			return err
+		}
+		if len(newPlugin) != 0 {
+			return ErrMalformPacket
+		}
+	}
+	// https://insidemysql.com/preparing-your-community-connector-for-mysql-8-part-2-sha256/
+	switch plugin {
+	case CachingSha2Password:
+		switch len(authData) {
+		case 0:
+			return nil
+		case 1:
+			switch authData[0] {
+			case cachingSha2PasswordFastAuthSuccess:
+				_, err := p.ReadOK()
+				return err
+			case cachingSha2PasswordPerformFullAuthentication:
+				// 这里需要用服务器密钥加密密码后发送
+				data := make([]byte, packetHeaderSize+1)
+				data[packetHeaderSize] = cachingSha2PasswordRequestPublicKey
+				if err := p.WritePacket(data); err != nil {
+					return err
+				}
+
+				keyData, err := p.ReadPacket()
+				if err != nil {
+					return err
+				}
+
+				block, rest := pem.Decode(keyData[1:])
+
+				if block == nil {
+					return fmt.Errorf("No Pem data found, data: %s", rest)
+				}
+				pkix, err := x509.ParsePKIXPublicKey(block.Bytes)
+				if err != nil {
+					return err
+				}
+				pubKey := pkix.(*rsa.PublicKey)
+
+				authResp, err := encryptPassword(password, p.salt_, pubKey)
+				if err != nil {
+					return err
+				}
+
+				if err = p.WriteAuthSwitchResponse(authResp); err != nil {
+					return err
+				}
+
+				_, err = p.ReadOK()
+				return err
+			}
+		default:
+			return ErrMalformPacket
+		}
+	default:
+		return nil
+	}
+
+	return nil
+}
+#+end_src
 ** 文本协议 （ [[https://dev.mysql.com/doc/internals/en/text-protocol.html][Text Protocol]] ）
 *** 说明
 目前在 ~mysql 8.0~ 中有部分命令是废弃掉的（可以参照头文件 ~include/my_command.h~ 中的命令枚举）。
