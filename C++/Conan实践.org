@@ -34,8 +34,14 @@ There are no packages matching the 'boost' pattern
 讲道理这个逻辑我是有点看不懂，你要说优先查询本地这个我是可以接受，但如果本地不存在不查询默认远程仓库这个我是觉得不太合理。
 当然，吐嘈归吐嘈，希望后续有所改进吧。
 ** 远程仓库
-~Conan~ 提供了几个官方和社区的远端供选择，默认的，安装后会自动配置 ~Conan Center~ 这个源：
-+ conan-center: https://conan.io/center
+~Conan~ 提供了几个官方和社区的远端供选择，默认的，安装后会自动配置 =ConanCenter= 这个源：
++ =ConanCenter= : https://center.conan.io
+  这个是官方现在的社区主力源，文档说是默认配置的，但我从老版本升级上来的貌似没有配置这个源，还是下面的源。
+#+begin_src shell
+$ conan remote add conancenter https://center.conan.io
+#+end_src
++ =conan-center= : https://conan.bintray.com
+  这个也是官方源，现在应该是不建议用了。
 
 #+begin_src shell
 $ conan remote add conan-center https://conan.bintray.com
