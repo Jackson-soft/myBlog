@@ -1,0 +1,72 @@
+#+TITLE: =CMake= 的依赖管理
+* 说明
+目前 =C++= 的依赖管理相比于很多其他语言来说是比较弱的。最为难受的是没有一个统一的管理工具或者说官方
+工具。
+
+一般大型的项目我比较推荐 [[https://conan.io/][Conan]] 来管理依赖。但相对来一般的学习型项目或小型项目我们是可以有两种轻量的选择：
+- =git= 下的 =Submodule= :: 这种适合库只有头文件，不然需要自己写编译脚本
+
+  #+begin_src shell
+  git submodule add https://github.com/onqtam/doctest third_part/doctest
+  #+end_src
+- =cmake= 的 =FetchContent= :: 适合库是可安装的（即 =CMakeLists.txt= 中要有 =install()= 函数）
+
+相关文档在文章最后，具体可以看一下。
+
+*说明* : =FetchContent= 模块是在 =CMake= 3.11 版本中引入的，完善于 3.14 版本，所以尽量使用 =CMake=
+的 3.14 之后的版本。
+* 示例
+** 基本套路
+#+begin_src text
+1.include(FetchContent)
+2.FetchContent_Declare(子模块名) 获取项目。
+3.FetchContent_MakeAvailable(子模块)，再引入我们的项目中
+4.target_link_libraries(主项目 PRIVATE 子模块::子模块)
+#+end_src
+** 简单示例
+
+#+begin_src cmake
+cmake_minimum_required(VERSION 3.14)
+
+project(test CXX)
+
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+include(FetchContent)
+
+FetchContent_Declare(
+    Range-v3
+    GIT_REPOSITORY "https://github.com/ericniebler/range-v3"
+    GIT_TAG "origin/master")
+
+FetchContent_MakeAvailable(Range-v3)
+
+add_executable(${PROJECT_NAME} src/main.cpp)
+target_link_libraries(${PROJECT_NAME} range-v3)
+#+end_src
+
+在我们的 =C++= 代码中我们就可以使用相关的库了，例如：
+
+#+begin_src cpp
+#include "range/v3/algorithm/find.hpp"
+
+#include <cstdlib>
+#include <iostream>
+#include <vector>
+
+auto main() -> int
+{
+    std::vector<int> v{1, 3, 4, 5, 6, 9};
+
+    auto             i = ranges::find(v, 6);
+
+    std::cout << *i << std::endl;
+
+    return EXIT_SUCCESS;
+}
+#+end_src
+
+* 文档
+- [[https://cmake.org/cmake/help/latest/module/FetchContent.html][FetchContent]]
+- [[https://git-scm.com/docs/gitsubmodules][Submodule]]
