@@ -91,13 +91,16 @@ spec:
 GET http://127.0.0.1:30001/echo
 #+end_src
 
-#+begin_src text
+#+RESULTS:
+#+BEGIN_SRC text
+hi echo
+GET http://127.0.0.1:30001/echo
 HTTP/1.1 200 OK
-Date: Mon, 27 Sep 2021 08:20:00 GMT
+Date: Mon, 27 Sep 2021 10:08:20 GMT
 Content-Length: 7
 Content-Type: text/plain; charset=utf-8
+Request duration: 0.003595s
+#+END_SRC
 
-hi echo
-#+end_src
 * 文档
 - [[https://kubernetes.io/docs/concepts/services-networking/service/#nodeport][Service]]
