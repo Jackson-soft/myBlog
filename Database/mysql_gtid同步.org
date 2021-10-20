@@ -1,0 +1,49 @@
+#+TITLE: =MySQL= 的 =GTID= 主从同步
+* 说明
+主从同步一般用于以下场景：
+- 数据灾备；
+- 读写分离，缓解主库压力。
+* 同步
+** 同步复制流程
+同步数据存在于至少一主(=master=)一从(=slave=)部署模式下。同步流程如下：
+1. 当主库的数据库发生任何修改都会写到 =binary log= 中；
+2. 主库会启一个 =dump thread= 线程来读取 =binary log= 并发送给从库；
+3. 从库会启一个 =IO thread= 线程来接收主库发过来的 =binary log= 并写到 =relay log= 中；
+4. 从库会启另外一个 =SQL thread= 线程来读取 =relay log= 并把修改追加到数据库中。
+** =GTID= 同步
+=global transaction identifier (GTID)= 是一种全局事务唯一标识(=unique identifier=)，它是在 =master= 上已经提交的事务， =slave= 直接根据该 =ID= 进行复制
+操作。该操作替代了 =binary log + postion= 的方式，使得主从复制的配置操作更加简单。
+
+*该模式需要 =MySQL>=5.6= 版本。*
+*** 构造
+#+begin_src text
+GTID = source_id:transaction_id
+#+end_src
+=source_id= 是每一个 =MySQL= 服务在启动时，生成的全局随机唯一 =server_uuid= 。 =transaction_id= 则是事务的 =ID= ，由事务在源服务器上提交顺序确定的序列号。
+*** 开启 =GTID=
+主从服务器都加上如下配置：
+#+begin_src conf
+gtid_mode=ON
+enforce-gtid-consistency=ON
+#+end_src
+* 主从切换
+** 主库存活切换
+1. 停止当前主库的写操作；
+2. 选择一个备库作为新的主库，并确保它已经完全跟上主库（执行完所有中继日志）；
+3. 确保新主库和旧主库数据一致，可选；
+4. 在新主库上执行 =stop slave= ；
+5. 在新主库上执行 =reset slave all= ，使其断开与老主库的连接。
+6. 执行 =show master status= 记录新主库的二进制日志坐标。
+7. 确保其它从库已经追上就主库。
+8. 关闭旧主库。
+9. 如果需要，在新主库上执行 =set global read_only=on= 使其可写。
+10. 在每台从库上执行 =change master to= 语句，使用前面第（7）步获得的二进制坐标，来指向新主库。
+** 主库故障切换
+当主库崩溃时，需要提升一个从库来替代它。如果只有一个从库，那别无选择，只能使用这台备库。但如果有超过一个的从库，就需要做一些额外工作。对主从拓扑结构中的从库进行提升的过程可以简单描述如下：
+1. 让所有从库执行完其从崩溃前的旧主库获得的中继日志；
+2. 选择并设置新主库；
+3. 查找其它所有从库最后执行的事件，在新主库上对应的二进制坐标；
+4. 其它所有从库重置复制，按上一步获得的二进制坐标连接到新主库，启动新复制。
+* 文档
+- [[https://dev.mysql.com/doc/internals/en/replication.html][Replication]]
+- [[https://dev.mysql.com/doc/refman/8.0/en/replication-gtids.html][Replication with Global Transaction Identifiers]]
