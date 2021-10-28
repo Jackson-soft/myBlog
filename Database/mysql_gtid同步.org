@@ -14,7 +14,7 @@
 =global transaction identifier (GTID)= 是一种全局事务唯一标识(=unique identifier=)，它是在 =master= 上已经提交的事务， =slave= 直接根据该 =ID= 进行复制
 操作。该操作替代了 =binary log + postion= 的方式，使得主从复制的配置操作更加简单。
 
-*该模式需要 =MySQL>=5.6= 版本。*
+*该模式需要 MySQL>=5.6 版本。*
 *** 构造
 #+begin_src text
 GTID = source_id:transaction_id

@@ -1,0 +1,120 @@
+#+TITLE: =Linux= 下的文件监控
+* 说明
+=Fanotify= (=Filesystem wide access notification=) 是一个 =notifier= ，即一种对文件系统变化产生通知的机制。 =fanotify= 是 =inotify= 的一个新进版本，
+主要是用于文件系统扫描的检测和分层存储的管理。我使用的主要场景是用来配置热更新。
+
+*注意* : =fanotify api= 必须要 ~kernel >= 2.6.37~ ， =Fdinfo= 是在 =3.8= 之后支持的。
+* 流程
+** 相关 =API=
+*** =fanotify_init=
+**** 基本
+#+begin_src c
+#include <fcntl.h>            /* Definition of O_* constants */
+#include <sys/fanotify.h>
+
+int fanotify_init(unsigned int flags, unsigned int event_f_flags);
+#+end_src
+
+初始化 =fanotify= 事件组，并且该 =fanotify= 组的事件队列的 =int= 类型句柄。它的另一个优势，在这里可以看出，可以通过 =epoll= 、 =select= 、 =kqueue= 等监听。
+
+我们主要关注第一个参数 =flags= ，第二个入参相对来说比较简单，直接传 0 即可。
+
+- =FAN_CLASS_PRE_CONTENT= :: 此值允许接收通知文件已被访问的事件，以及可能访问文件时用于权限决策的事件。它适用于需要在包含最终数据之前访问文件的事件侦听器。例如，分层存储管理器可能使用这个通知类。
+- =FAN_CLASS_CONTENT= :: 此值允许接收通知文件已被访问的事件，以及可能访问文件时用于权限决策的事件。它是为那些需要访问已经包含最终内容的文件的事件侦听器而设计的。例如，恶意软件检测程序可能会使用这个通知类。
+- =FAN_CLASS_NOTIF= :: 这是默认值。它不需要指定。此值只允许接收通知文件已被访问的事件。不可能在访问文件之前做出权限决定。
+**** 错误相关
+由于我本身是在 =Mac= 上开发，使用 =vscode= 的 =Remote - Containers= 到 =Debian= 镜像上，在一开始的测试中，一直报 =operation not permitted= 的错误。
+多方查询无果后，我才看到文档说明中有这方面的介绍。
+
+#+begin_src text
+EPERM  The operation is not permitted because the caller lacks the CAP_SYS_ADMIN capability.
+#+end_src
+
+容器运行在宿主机上的时候，很多权限是被控制的，容器原理上是使用 =cgroup= 、 =namespace= 等对宿主机的资源进行隔离并且调度使用，因此对宿主机有一定的侵入性。
+权限控制可以一定程度上保证宿主机不被侵入。然而保证安全性的同时也会将用户在容器中的一些权限给屏蔽掉，例如默认的容器权限是不允许做 =mount= 操作、 =swapon= 操作等。
+
+如果想给予容器 =SYS_ADMIN= 权限的话，可以使用如下命令：
+#+begin_src shell
+docker run --rm -it --cap-add=SYS_ADMIN --security-opt apparmor=unconfined debian bash
+#+end_src
+
+其中， =--cap-add=SYS_ADMIN= 表示给 =Docker= 容器 =SYS_ADMIN= 的 =Capability= 。 =--security-opt apparmor=unconfined= 表示去除 =Docker= 默认的 =AppArmor= 配置。
+
+最终问题是由于 =vscode= 的 =Remote - Containers= 的运行权限给的不够：
+#+begin_src json
+{
+	"runArgs": [
+		"--init",
+		//"--cap-add=SYS_PTRACE",
+		"--cap-add=SYS_ADMIN",
+		"--security-opt",
+		"seccomp=unconfined"
+	],
+}
+#+end_src
+
+在 =devcontainer.json= 中把支持参数改一下即可。
+*** =fanotify_mark=
+#+begin_src c
+#include <sys/fanotify.h>
+
+int fanotify_mark(int fanotify_fd, unsigned int flags,
+                         uint64_t mask, int dirfd, const char *pathname);
+#+end_src
+
+在文件系统对象上添加、删除或修改fanotify标记。调用者必须对要标记的文件系统对象具有读权限。
+
+这里第二个入参 =flags= 主要是增删改动作，主要是第三个入参 =mask= 是我们关注的信号，我们可能用到的有下面几个:
+- =FAN_MODIFY= :: Create an event when a file is modified (write).
+- =FAN_CLOSE_WRITE= :: Create an event when a writable file is closed.
+- =FAN_CLOSE_NOWRITE= :: Create an event when a read-only file or directory is closed.
+
+=Linux 5.1= 之后新增了一些比较有用的标识位，但这个对内核版本有要求，如果生产环境的内核版本达到要求，可以试试。
+
+第四个参数 =dirfd= 和第五个参数 =pathname= 描述的是监控点路径。优先使用 =pathname= 来确定路径，否则使用 =dirfd= 来确定路径。
+*** 使用
+使用的基本流程如下面的伪代码：
+
+#+begin_src cpp
+#include <errno.h>
+#include <fcntl.h>
+#include <limits.h>
+#include <poll.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/fanotify.h>
+#include <unistd.h>
+auto main() -> auto {
+    auto fd = fanotify_init(FAN_CLOEXEC | FAN_CLASS_CONTENT | FAN_NONBLOCK,
+                              O_RDONLY | O_LARGEFILE);
+
+    fanotify_mark(fd, FAN_MARK_ADD | FAN_MARK_MOUNT,
+                             FAN_OPEN_PERM | FAN_CLOSE_WRITE, AT_FDCWD,
+                  argv[1]);
+
+    struct fanotify_event_metadata *metadata;
+    struct fanotify_response response;
+    while (true) {
+        auto len = read(fd, metadata, sizeof(metadata));
+        if (metadata->vers != FANOTIFY_METADATA_VERSION) {
+            exit(EXIT_FAILURE);
+        }
+
+        if (metadata->mask & FAN_OPEN_PERM) {
+            printf("FAN_OPEN_PERM: ");
+
+            /* Allow file to be opened. */
+
+            response.fd = metadata->fd;
+            response.response = FAN_ALLOW;
+            write(fd, &response, sizeof(response));
+        }
+
+        if (metadata->mask & FAN_CLOSE_WRITE) {
+            // do something
+        }
+    }
+}
+#+end_src
+* 文档
+- [[https://man7.org/linux/man-pages/man7/fanotify.7.html][fanotify]]
