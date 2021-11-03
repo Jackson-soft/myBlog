@@ -44,6 +44,10 @@ CONNECTION_DENIED [ shape = "box", label = "ERR" ];
 NOT_SUPPORTED     [ shape = "box", label = "DISCONNECT" ];
 }
 #+end_src
+
+#+RESULTS:
+[[file:connection_phase.png]]
+
 * 公共数据包
 ** OK
 ** ERROR
