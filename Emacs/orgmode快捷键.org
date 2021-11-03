@@ -1,5 +1,15 @@
 #+TITLE: /Org-Mode/ 快捷键
 * 基本
+* 使用问题收集
+** =orgmode= 代码块的 =results= 在 =github= 中不显示而是显示源码
+原因在于代码块的结果导出默认行为是 =:exports code= ,如果我们想显示结果，则需要加上导出结果标识 =:exports results= ，例如：
+
+=#+begin_src dot :exports results :file connection_phase.png :cmdline -Kdot -Tpng=
+
+具体文档在这里：[[https://orgmode.org/manual/Exporting-Code-Blocks.html][Exporting Code Blocks]]
+
+我是从这里找到的解决方案： [[https://github.com/github/markup/issues/413][orgmode results are not displayed]]
+
 * 文档
 + [[https://orgmode.org/][Org mode for Emacs &#x2013; Your Life in Plain Text]]
 + [[https://orgmode.org/worg/orgcard.html][Org-Mode Reference Card]]
