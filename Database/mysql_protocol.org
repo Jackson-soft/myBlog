@@ -18,7 +18,7 @@
 | string<var> | ~payload~        | 包的实际载荷     |
 ** 交互流程
 =MySQL= 的通信协议连接阶段主要流程如下（薅自官网：[[https://dev.mysql.com/doc/internals/en/connection-phase.html][Connection Phase]] ）:
-#+begin_src dot :file connection_phase.png :cmdline -Kdot -Tpng
+#+begin_src dot :exports results :file connection_phase.png :cmdline -Kdot -Tpng
 digraph connection_phase {
 AUTH_CHALLENGE [ label = "Initial Handshake Packet" ];
 AUTH_CHALLENGE  -> CLIENT_RESPONSE;
