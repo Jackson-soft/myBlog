@@ -17,6 +17,33 @@
 |-------------+----------------+------------|
 | string<var> | ~payload~        | 包的实际载荷     |
 ** 交互流程
+=MySQL= 的通信协议连接阶段主要流程如下（薅自官网：[[https://dev.mysql.com/doc/internals/en/connection-phase.html][Connection Phase]] ）:
+#+begin_src dot :file connection_phase.png :cmdline -Kdot -Tpng
+digraph connection_phase {
+AUTH_CHALLENGE [ label = "Initial Handshake Packet" ];
+AUTH_CHALLENGE  -> CLIENT_RESPONSE;
+AUTH_CHALLENGE  -> SSL_HANDSHAKE;
+
+SSL_HANDSHAKE [ label = "SSL Exchange" ];
+SSL_HANDSHAKE     -> CLIENT_RESPONSE;
+
+CLIENT_RESPONSE [ label = "Client Response" ];
+CLIENT_RESPONSE -> AUTH_METHOD_SWITCH;
+CLIENT_RESPONSE -> AUTHENTICATION_EXCHANGE;
+CLIENT_RESPONSE -> CONNECTION_DENIED [ label = "insufficient client \n capabilities" ];
+
+AUTH_METHOD_SWITCH [ label = "Authentication method \n switch" ];
+AUTH_METHOD_SWITCH -> AUTHENTICATION_EXCHANGE -> COMMAND_PHASE;
+AUTH_METHOD_SWITCH -> NOT_SUPPORTED [ label = "client does not know \n requested auth method" ];
+
+AUTHENTICATION_EXCHANGE [ label = "Authentication exchange \n continuation" ];
+AUTHENTICATION_EXCHANGE -> CONNECTION_DENIED;
+
+COMMAND_PHASE     [ shape = "box", label = "OK" ];
+CONNECTION_DENIED [ shape = "box", label = "ERR" ];
+NOT_SUPPORTED     [ shape = "box", label = "DISCONNECT" ];
+}
+#+end_src
 * 公共数据包
 ** OK
 ** ERROR
@@ -186,4 +213,5 @@ string[$len]   values
 #+end_src
 
 * 文档
+- [[https://dev.mysql.com/doc/internals/en/connection-phase.html][Connection Phase]]
 - [[https://dev.mysql.com/doc/internals/en/client-server-protocol.html][MySQL :: MySQL Internals Manual :: 14 MySQL Client/Server Protocol]]
