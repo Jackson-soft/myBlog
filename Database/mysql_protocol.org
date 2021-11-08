@@ -5,7 +5,7 @@
 ** 数据包
 *说明* :
 - 数据包最大上限是 ~16M~
-- 数据包序列号（ ~Sequence ID~ ）的规则是：每个新命令包以 0 开始，然后重置为 0 。
+- 数据包序列号（ ~Sequence ID~ ）的规则是：每个新命令包都是以 0 开始递增。
 
 包体载荷如下：
 
@@ -16,7 +16,7 @@
 | int<1>      | ~sequence_id~    | 包体序列号 |
 |-------------+----------------+------------|
 | string<var> | ~payload~        | 包的实际载荷     |
-** 交互流程
+** 认证流程
 =MySQL= 的通信协议连接阶段主要流程如下（薅自官网：[[https://dev.mysql.com/doc/internals/en/connection-phase.html][Connection Phase]] ）:
 #+begin_src dot :exports results :file connection_phase.png :cmdline -Kdot -Tpng
 digraph connection_phase {
@@ -62,7 +62,7 @@ n bytes    参数
 
 *命令标识符* : 标识当前请求消息的类型 (协议枚举在 ~include/my_command.h~ )
 *参数* : 参数是可选项
-** 登录过程
+** 登录交互流程
 *** 说明
 其实客户端登录服务端本来是没什么可说的，但 ~mysql 8.0~ 后添加了对 ~caching_sha2_password~ 插件的支持。再加上对低版本的兼容，让整个过程变的比较麻烦。
 参照这篇文章 [[https://insidemysql.com/preparing-your-community-connector-for-mysql-8-part-2-sha256/][Preparing your Community Connector for MySQL 8 – part 2 – SHA256]]
@@ -85,102 +85,102 @@ n bytes    参数
 完整流程如下：
 #+begin_src go
 func encryptPassword(password string, seed []byte, pub *rsa.PublicKey) ([]byte, error) {
-	plain := make([]byte, len(password)+1)
-	copy(plain, password)
-	for i := range plain {
-		j := i % len(seed)
-		plain[i] ^= seed[j]
-	}
-	sha1 := sha1.New()
-	return rsa.EncryptOAEP(sha1, rand.Reader, pub, plain, nil)
+    plain := make([]byte, len(password)+1)
+    copy(plain, password)
+    for i := range plain {
+        j := i % len(seed)
+        plain[i] ^= seed[j]
+    }
+    sha1 := sha1.New()
+    return rsa.EncryptOAEP(sha1, rand.Reader, pub, plain, nil)
 }
 
 // 处理认证过程
 func (p *PacketIO) HandleAuthResult(password, plugin string) error {
-	authData, newPlugin, err := p.readAuthResult()
-	if err != nil {
-		return err
-	}
+    authData, newPlugin, err := p.readAuthResult()
+    if err != nil {
+        return err
+    }
 
-	if len(newPlugin) != 0 {
-		plugin = newPlugin
+    if len(newPlugin) != 0 {
+        plugin = newPlugin
 
-		if len(authData) != 0 {
-			p.salt_ = authData
-		}
+        if len(authData) != 0 {
+            p.salt_ = authData
+        }
 
-		authResp, err := p.Auth(password, plugin)
-		if err != nil {
-			return err
-		}
+        authResp, err := p.Auth(password, plugin)
+        if err != nil {
+            return err
+        }
 
-		if err = p.WriteAuthSwitchResponse(authResp); err != nil {
-			return err
-		}
+        if err = p.WriteAuthSwitchResponse(authResp); err != nil {
+            return err
+        }
 
-		authData, newPlugin, err = p.readAuthResult()
-		if err != nil {
-			return err
-		}
-		if len(newPlugin) != 0 {
-			return ErrMalformPacket
-		}
-	}
-	// https://insidemysql.com/preparing-your-community-connector-for-mysql-8-part-2-sha256/
-	switch plugin {
-	case CachingSha2Password:
-		switch len(authData) {
-		case 0:
-			return nil
-		case 1:
-			switch authData[0] {
-			case 3:
-				_, err := p.ReadOK()
-				return err
-			case 4:
-				// 这里需要用服务器密钥加密密码后发送
-				data := make([]byte, packetHeaderSize+1)
-				data[packetHeaderSize] = 2
-				if err := p.WritePacket(data); err != nil {
-					return err
-				}
+        authData, newPlugin, err = p.readAuthResult()
+        if err != nil {
+            return err
+        }
+        if len(newPlugin) != 0 {
+            return ErrMalformPacket
+        }
+    }
+    // https://insidemysql.com/preparing-your-community-connector-for-mysql-8-part-2-sha256/
+    switch plugin {
+    case CachingSha2Password:
+        switch len(authData) {
+        case 0:
+            return nil
+        case 1:
+            switch authData[0] {
+            case 3:
+                _, err := p.ReadOK()
+                return err
+            case 4:
+                // 这里需要用服务器密钥加密密码后发送
+                data := make([]byte, packetHeaderSize+1)
+                data[packetHeaderSize] = 2
+                if err := p.WritePacket(data); err != nil {
+                    return err
+                }
 
-				keyData, err := p.ReadPacket()
-				if err != nil {
-					return err
-				}
+                keyData, err := p.ReadPacket()
+                if err != nil {
+                    return err
+                }
 
-				block, rest := pem.Decode(keyData[1:])
+                block, rest := pem.Decode(keyData[1:])
 
-				if block == nil {
-					return fmt.Errorf("No Pem data found, data: %s", rest)
-				}
-				pkix, err := x509.ParsePKIXPublicKey(block.Bytes)
-				if err != nil {
-					return err
-				}
-				pubKey := pkix.(*rsa.PublicKey)
+                if block == nil {
+                    return fmt.Errorf("No Pem data found, data: %s", rest)
+                }
+                pkix, err := x509.ParsePKIXPublicKey(block.Bytes)
+                if err != nil {
+                    return err
+                }
+                pubKey := pkix.(*rsa.PublicKey)
 
-				authResp, err := encryptPassword(password, p.salt_, pubKey)
-				if err != nil {
-					return err
-				}
+                authResp, err := encryptPassword(password, p.salt_, pubKey)
+                if err != nil {
+                    return err
+                }
 
-				if err = p.WriteAuthSwitchResponse(authResp); err != nil {
-					return err
-				}
+                if err = p.WriteAuthSwitchResponse(authResp); err != nil {
+                    return err
+                }
 
-				_, err = p.ReadOK()
-				return err
-			}
-		default:
-			return ErrMalformPacket
-		}
-	default:
-		return nil
-	}
+                _, err = p.ReadOK()
+                return err
+            }
+        default:
+            return ErrMalformPacket
+        }
+    default:
+        return nil
+    }
 
-	return nil
+    return nil
 }
 #+end_src
 ** 文本协议 （ [[https://dev.mysql.com/doc/internals/en/text-protocol.html][Text Protocol]] ）
@@ -193,6 +193,88 @@ func (p *PacketIO) HandleAuthResult(password, plugin string) error {
 - ~COM_CONNECT~
 - ~COM_TIME~
 - ~COM_DAEMON~
+*** 认证
+**** =HandshakeV10=
+客户端连接上来后，由服务端下发的 =Handshake= 信息包，目前 =MySQL 8.0= 使用的是 =10.0= 版本。
+
+包体如下：
+#+begin_src text
+1              [0a] protocol version
+string[NUL]    server version
+4              connection id
+string[8]      auth-plugin-data-part-1
+1              [00] filler
+2              capability flags (lower 2 bytes)
+  if more data in the packet:
+1              character set
+2              status flags
+2              capability flags (upper 2 bytes)
+  if capabilities & CLIENT_PLUGIN_AUTH {
+1              length of auth-plugin-data
+  } else {
+1              [00]
+  }
+string[10]     reserved (all [00])
+  if capabilities & CLIENT_SECURE_CONNECTION {
+string[$len]   auth-plugin-data-part-2 ($len=MAX(13, length of auth-plugin-data - 8))
+  if capabilities & CLIENT_PLUGIN_AUTH {
+string[NUL]    auth-plugin name
+  }
+#+end_src
+**** =HandshakeResponse41=
+由客户端发送的认证信息包。
+
+包体如下：
+#+begin_src text
+4              capability flags, CLIENT_PROTOCOL_41 always set
+4              max-packet size
+1              character set
+string[23]     reserved (all [0])
+string[NUL]    username
+  if capabilities & CLIENT_PLUGIN_AUTH_LENENC_CLIENT_DATA {
+lenenc-int     length of auth-response
+string[n]      auth-response
+  } else if capabilities & CLIENT_SECURE_CONNECTION {
+1              length of auth-response
+string[n]      auth-response
+  } else {
+string[NUL]    auth-response
+  }
+  if capabilities & CLIENT_CONNECT_WITH_DB {
+string[NUL]    database
+  }
+  if capabilities & CLIENT_PLUGIN_AUTH {
+string[NUL]    auth plugin name
+  }
+  if capabilities & CLIENT_CONNECT_ATTRS {
+lenenc-int     length of all key-values
+lenenc-str     key
+lenenc-str     value
+   if-more data in 'length of all key-values', more keys and value pairs
+  }
+#+end_src
+**** =SSLRequest=
+如果客户端配置了 =TLS= 相关信息，则会在 =Protocol::HandshakeResponse41= 之前发送 =Protocol::SSLRequest= 包用于将非 =TLS= 连接转换为加密 =TLS= 连接。
+
+*注意*: =MySQL= 客户端与服务端之间的 =TLS= 连接并不是一开始就是加密的，是在发送 =Protocol::SSLRequest= 包后才转换为加密连接。
+
+包体如下：
+#+begin_src text
+4              capability flags, CLIENT_SSL always set
+4              max-packet size
+1              character set
+string[23]     reserved (all [0])
+#+end_src
+
+这里细心的朋友可能注意到了， =SSLRequest= 的包体与 =HandshakeResponse41= 的包体在 =username= 之前是一模一样的，对的，你猜对了，就是发送的 =HandshakeResponse41= 包
+的 =username= 之前的数据，特别是 =capability flags= 一定要一样，不然会有意想不到的错误。
+**** =AuthSwitchResponse=
+切换密码加密方式。
+
+包体如下：
+#+begin_src text
+string[EOF]    auth plugin response
+#+end_src
 *** 查询
 [[https://dev.mysql.com/doc/internals/en/com-query.html][COM_QUERY]] 是客户端发送给服务端立即执行的文本查询语句。
 
