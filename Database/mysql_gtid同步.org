@@ -47,3 +47,4 @@ enforce-gtid-consistency=ON
 * 文档
 - [[https://dev.mysql.com/doc/internals/en/replication.html][Replication]]
 - [[https://dev.mysql.com/doc/refman/8.0/en/replication-gtids.html][Replication with Global Transaction Identifiers]]
+- [[https://dev.mysql.com/doc/refman/8.0/en/replication-solutions-switch.html][Switching Sources During Failover]]

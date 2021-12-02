@@ -297,7 +297,22 @@ string[EOF]    the query the server shall execute
 string[$len]   NULL-bitmap, length: (column-count + 7 + 2) / 8
 string[$len]   values
 #+end_src
+* 一些错误处理
+** 为了方便用 =Wireshark= 抓包，我们在使用8.0客户端连接时可以添加 =--ssl-mode=DISABLED= 参数：
+#+begin_src shell
+$> mysql --ssl-mode=DISABLED -u sha2user -p password
+#+end_src
 
+但你会得到如下错误：
+#+begin_src text
+ERROR 2061 (HY000): Authentication plugin 'caching_sha2_password' reported error: Authentication requires secure connection.
+#+end_src
+
+解决方法是添加 =--get-server-public-key= 参数：
+#+begin_src shell
+$> mysql --ssl-mode=DISABLED -u sha2user -p password --get-server-public-key
+#+end_src
 * 文档
 - [[https://dev.mysql.com/doc/internals/en/connection-phase.html][Connection Phase]]
 - [[https://dev.mysql.com/doc/internals/en/client-server-protocol.html][MySQL :: MySQL Internals Manual :: 14 MySQL Client/Server Protocol]]
+- [[https://dev.mysql.com/doc/refman/8.0/en/caching-sha2-pluggable-authentication.html][Caching SHA-2 Pluggable Authentication]]
