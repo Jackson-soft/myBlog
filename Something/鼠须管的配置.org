@@ -48,3 +48,9 @@ curl -fsSL https://git.io/rime-install | bash -s -- :preset wubi pinyin-simp
 + 星際爭霸 - /starcraft/
 ** 输入法词库配置
 某个输入法的词库配置文件名一般是 /xxx.custom.yaml/ ,这个 /xxx/ 是输入法的英文名称。比如五笔拼音的就是 /wubi_pinyin.custom.yaml/ 。
+* 码表
+=rime= 本身是一个输入法框架，输入法可以自由扩展，下面这个仓库里有一个列表可供选择：
+
+[[https://github.com/sgalal/awesome-rime][awesome-rime]]
+
+因为我是用五笔的，所以选了 [[https://github.com/KyleBing/rime-wubi86-jidian][86五笔极点码表]] 。
