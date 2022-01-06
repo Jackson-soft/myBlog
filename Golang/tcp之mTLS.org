@@ -1,0 +1,191 @@
+#+TITLE: =Golang= 的 =TCP= =mTLS=
+* 说明
+在一些对安全性要求比较高的场景中，需要我们的客户端与服务端互不信任，这时候需要对双端做 =mTLS= 处理。
+* 自建证书
+** 脚本
+#+begin_src shell
+#!/bin/bash
+
+dir="certs"
+rm -rf $dir
+mkdir $dir
+
+echo "create ca cert"
+openssl genrsa -out $dir/ca-key.pem 2048
+openssl req -x509 -new -nodes -days 36500 \
+    -key $dir/ca-key.pem \
+    -out $dir/ca.pem \
+    -subj "/C=CN/ST=ZJ/L=HZ/O=random/OU=IT/CN=CA/CN=saturn/emailAddress=demo@random.com"
+
+echo "create server cert"
+openssl req -newkey rsa:2048 -nodes -days 36500 \
+    -keyout $dir/server-key.pem \
+    -out $dir/server-req.pem \
+    -subj "/C=CN/ST=ZJ/L=HZ/O=random/OU=IT/CN=CA/CN=zeus/emailAddress=demo@random.com"
+
+openssl x509 -req -days 36500 -set_serial 01 \
+    -in $dir/server-req.pem \
+    -out $dir/server-cert.pem \
+    -CA $dir/ca.pem \
+    -CAkey $dir/ca-key.pem
+
+echo "create client cert"
+openssl req -newkey rsa:2048 -nodes -days 36500 \
+    -keyout $dir/client-key.pem \
+    -out $dir/client-req.pem \
+    -subj "/C=CN/ST=ZJ/L=HZ/O=random/OU=IT/CN=CA/CN=hermes/emailAddress=demo@random.com"
+
+openssl x509 -req -days 365000 -set_serial 01 \
+    -in $dir/client-req.pem \
+    -out $dir/client-cert.pem \
+    -CA $dir/ca.pem \
+    -CAkey $dir/ca-key.pem
+
+openssl verify -CAfile $dir/ca.pem \
+    $dir/server-cert.pem \
+    $dir/client-cert.pem
+#+end_src
+** 错误
++ =error 18 at 0 depth lookup: self signed certificate=
+  我一开始自建证书的时候遇到过这个错误，网上查证一番，说是三个证书用的是 =Common Name= 是相同。
+
+  =When OpenSSL prompts you for the Common Name for each certificate, use different names.=
+
+  最终三个证书的 =CN= 用了不同的参数就可以了。
+* 服务端
+#+begin_src go
+package main
+
+import (
+    "bufio"
+    "crypto/tls"
+    "crypto/x509"
+    "io/ioutil"
+    "log"
+    "net"
+    "path/filepath"
+)
+
+var (
+    serverCrt string = "server-cert.pem"
+    serverKey string = "server-key.pem"
+    clientCrt string = "client-cert.pem"
+    caCrt     string = "ca.pem"
+    certs     string = "./certs"
+)
+
+func main() {
+    cert, err := tls.LoadX509KeyPair(filepath.Join(certs, serverCrt), filepath.Join(certs, serverKey))
+    if err != nil {
+        log.Println(err)
+        return
+    }
+    caCert, err := ioutil.ReadFile(filepath.Join(certs, caCrt))
+    if err != nil {
+        panic("Unable to read cert.pem")
+    }
+    caCertPool := x509.NewCertPool()
+    ok := caCertPool.AppendCertsFromPEM(caCert)
+    if !ok {
+        panic("failed to parse root certificate")
+    }
+    config := &tls.Config{
+        Certificates:       []tls.Certificate{cert},
+        InsecureSkipVerify: true,
+        RootCAs:            caCertPool,
+    }
+    ln, err := tls.Listen("tcp", ":8090", config)
+    if err != nil {
+        log.Println(err)
+        return
+    }
+    defer ln.Close()
+    for {
+        conn, err := ln.Accept()
+        if err != nil {
+            log.Println(err)
+            continue
+        }
+        go handleConn(conn)
+    }
+}
+
+func handleConn(conn net.Conn) {
+    defer conn.Close()
+    r := bufio.NewReader(conn)
+    for {
+        msg, err := r.ReadString('\n')
+        if err != nil {
+            log.Println(err)
+            return
+        }
+        println(msg)
+        n, err := conn.Write([]byte("world\n"))
+        if err != nil {
+            log.Println(n, err)
+            return
+        }
+    }
+}
+#+end_src
+* 客户端
+#+begin_src go
+package main
+
+import (
+    "crypto/tls"
+    "crypto/x509"
+    "io/ioutil"
+    "log"
+    "path/filepath"
+)
+
+var (
+    serverCrt string = "server-cert.pem"
+    serverKey string = "server-key.pem"
+    clientCrt string = "client-cert.pem"
+    clientKey string = "client-key.pem"
+    caCrt     string = "ca.pem"
+    certs     string = "./certs"
+)
+
+func main() {
+    cert, err := tls.LoadX509KeyPair(filepath.Join(certs, clientCrt), filepath.Join(certs, clientKey))
+    if err != nil {
+        log.Println(err)
+        return
+    }
+    caCert, err := ioutil.ReadFile(filepath.Join(certs, caCrt))
+    if err != nil {
+        panic("Unable to read cert.pem")
+    }
+    caCertPool := x509.NewCertPool()
+    ok := caCertPool.AppendCertsFromPEM(caCert)
+    if !ok {
+        panic("failed to parse root certificate")
+    }
+    conf := &tls.Config{
+        RootCAs:            caCertPool,
+        Certificates:       []tls.Certificate{cert},
+        InsecureSkipVerify: true,
+    }
+    conn, err := tls.Dial("tcp", "127.0.0.1:8090", conf)
+    if err != nil {
+        log.Println(err)
+        return
+    }
+    defer conn.Close()
+    n, err := conn.Write([]byte("hello\n"))
+    if err != nil {
+        log.Println(n, err)
+        return
+    }
+    buf := make([]byte, 100)
+    n, err = conn.Read(buf)
+    if err != nil {
+        log.Println(n, err)
+        return
+    }
+    println(string(buf[:n]))
+}
+#+end_src
