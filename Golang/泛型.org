@@ -1,0 +1,123 @@
+#+TITLE: 泛型
+* 说明
+  =Go= 在 =1.18= 版本加入了泛型的支持，应该是自诞生以来最大的变革。
+* 泛型语法
+** 函数的泛型化
+   语法： =func F[T Constraint](p T) { ... }=
+
+   + =Constraint= 是类型约束集，新增一个声明名称 =any= 代表允许任何约束；
+   + 类型约束必须是 =interface= 类型；
+   + 类型参数列表使用方括号[]。
+
+   看一下官方示例：
+   #+begin_src go
+// SumIntsOrFloats sums the values of map m. It supports both int64 and float64
+// as types for map values.
+func SumIntsOrFloats[K comparable, V int64 | float64](m map[K]V) V {
+    var s V
+    for _, v := range m {
+        s += v
+    }
+    return s
+}
+   #+end_src
+
+   这里说明一下 =Comparable= 类型，正如字面意思， =Comparable= 表示一个类型是否可以直接使用运算符比较，具体可以看看官方的定义 [[https://go.dev/ref/spec#Comparison_operators][Comparison operators]] 。
+
+   目前官方定义了两种：
+   + The equality operators ~==~ and ~!=~ apply to operands that are comparable.
+   + The ordering operators ~<~, ~<=~, ~>~, and ~>=~ apply to operands that are ordered
+
+   而 =Comparable= 的源码如下：
+   #+begin_src go
+// Type values are comparable, such as with the == operator,
+// so they can be used as map keys.
+// Two Type values are equal if they represent identical types.
+type Type interface {
+    // ...
+
+    // Comparable reports whether values of this type are comparable.
+    // Even if Comparable returns true, the comparison may still panic.
+    // For example, values of interface type are comparable,
+    // but the comparison will panic if their dynamic type is not comparable.
+    Comparable() bool
+
+    // ...
+}
+   #+end_src
+
+   结构体的示例：
+   #+begin_src go
+package main
+
+import (
+    "fmt"
+)
+
+type Some[T int | float64] struct {
+    x T
+}
+
+func (v *Some[T]) Add(a T) {
+    v.x += a
+}
+
+func (v *Some[T]) String() string {
+    return fmt.Sprintf("{x: %v}", v.x)
+}
+
+func NewSome[T int | float64](x T) *Some[T] {
+    return &Some[T]{x: x}
+}
+
+func main() {
+    v := NewSome[float64](1)
+    v.Add(2)
+    fmt.Println(v)
+}
+   #+end_src
+** 泛型类型约束
+   类型参数的类型限制约定了该类型参数允许的具体类型。
+
+   示例：
+   #+begin_src go
+func MyFunc[T int | int64 | float32 | ~string](x, y T) T {
+    return x + y
+}
+   #+end_src
+
+   这里涉及到两个符号：
+   + =|= :: 表示取并集。
+   + =~= :: =~= 是 =Go 1.18= 新增的符号， =~T= 表示底层类型是 =T= 的所有类型。
+
+   我们也可以用 =interface{}= 来自定义约束集：
+   #+begin_src go
+type Signed interface {
+    ~int | ~int8 | ~int16 | ~int32 | ~int64
+}
+   #+end_src
+   官方也为我们写了一些比较常用的约束集 [[https://github.com/golang/exp/tree/master/constraints][constraints]] ，我们可以直接，不过目前只有涵盖基本约束性的。
+** 泛型类型推导
+   类型推导其实在没有泛型之前就有，只是我们不能指定推导，加入泛型后，我们可以指定编译器推导类型。
+
+   示例：
+   #+begin_src go
+package main
+
+import (
+    "fmt"
+)
+
+func MyFunc[T any](x T) {
+    fmt.Println(x)
+}
+
+func main() {
+    a := 3.0 // 泛型前的类型推导
+    fmt.Println(a)
+    MyFunc(1111)           // 编译器自动推导
+    MyFunc[string]("aaaa") // 指定特化推导
+}
+   #+end_src
+* 文档
+  + [[https://go.googlesource.com/proposal/+/refs/heads/master/design/43651-type-parameters.md][Type Parameters Proposal]]
