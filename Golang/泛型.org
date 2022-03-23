@@ -1,6 +1,6 @@
 #+TITLE: 泛型
 * 说明
-  =Go= 在 =1.18= 版本加入了泛型的支持，应该是自诞生以来最大的变革。
+  =Go= 在 =1.18= 版本加入了泛型的支持，应该是自诞生以来最大的变革。泛型的加入让 =Go= 的表达能力上一个台阶，数据结构实现上更加的方便。
 * 泛型语法
 ** 函数的泛型化
    语法： =func F[T Constraint](p T) { ... }=
@@ -96,7 +96,7 @@ type Signed interface {
     ~int | ~int8 | ~int16 | ~int32 | ~int64
 }
    #+end_src
-   官方也为我们写了一些比较常用的约束集 [[https://github.com/golang/exp/tree/master/constraints][constraints]] ，我们可以直接，不过目前只有涵盖基本约束性的。
+   官方也为我们写了一些比较常用的约束集 [[https://github.com/golang/exp/tree/master/constraints][constraints]] ，不过目前只涵盖基本约束性的。
 ** 泛型类型推导
    类型推导其实在没有泛型之前就有，只是我们不能指定推导，加入泛型后，我们可以指定编译器推导类型。
 
