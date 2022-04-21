@@ -10,6 +10,14 @@
 
 我是从这里找到的解决方案： [[https://github.com/github/markup/issues/413][orgmode results are not displayed]]
 
+说明：
+
+=:cmdline -Kdot -Tpng= 就是命令行参数，他们告诉 =dot= 如何渲染和展示。
++ -Kdot 使用 =dot= 布局方式. 你也可以尝试其他的布局方式，比如 =Kneato=, =Kcirco=, =Ktwopi=, =Kfdp=, =Ksfdp=
++ -Tpng 渲染成 =png= 格式
+
+更多的命令行参数可以看 [[http://graphviz.org/doc/info/command.html][Command Line]] .
+
 * 文档
 + [[https://orgmode.org/][Org mode for Emacs &#x2013; Your Life in Plain Text]]
 + [[https://orgmode.org/worg/orgcard.html][Org-Mode Reference Card]]
