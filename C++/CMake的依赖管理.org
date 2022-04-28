@@ -66,6 +66,15 @@ auto main() -> int
     return EXIT_SUCCESS;
 }
 #+end_src
+** 依赖有自定义配置
+   #+begin_src cmake
+FetchContent_Declare(
+    RecastNavigation
+    GIT_REPOSITORY https://github.com/recastnavigation/recastnavigation.git)
+set(RECASTNAVIGATION_DEMO OFF)
+set(RECASTNAVIGATION_TESTS OFF)
+FetchContent_MakeAvailable(RecastNavigation)
+   #+end_src
 
 * 文档
 - [[https://cmake.org/cmake/help/latest/module/FetchContent.html][FetchContent]]
