@@ -7,9 +7,9 @@
 ** 分层架构
   DDD的分层架构如图：从上到下依次是：用户接口层、应用层、领域层和基础层。
 
-  [[file:ddd_layer.jpg][layer]]
+  [[file:ddd_layer.jpg]]
 
 ** 服务的调用
   微服务的服务调用包括三类主要场景：微服务内跨层服务调用，微服务之间服务调用和领域事件驱动。
 
-  [[file:ddd_invoke.png][invoke]]
+  [[file:ddd_invoke.png]]
