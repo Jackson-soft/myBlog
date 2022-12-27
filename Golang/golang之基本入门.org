@@ -3,6 +3,20 @@
 ** 基本
 ** /Any/ 类型
 /Go/ 语言中任何对象实例都满足空接口 /interface{}/ ，故此 /interface{}/ 看起来像是可以指向任何对象的 /Any/ 类型。
+** 切片
+   + 如果要清空一个slice，那么可以简单的赋值为nil，垃圾回收器会自动回收原有的数据。
+	 #+begin_src golang
+a := [1,2,3]
+a = nil
+fmt.Println(a, len(a), cap(a) // [] 0 0
+	 #+end_src
+   + 但是如果还需要使用 slice 底层内存，那么最佳的方式是 re-slice：
+	 #+begin_src golang
+a := [1,2,3]
+a = a[:0]
+fmt.Println(a, len(a), cap(a) // [] 0 3
+fmt.Println(a[:1]) // [1]
+	 #+end_src
 ** 返回值
 *** 局部变量返回
 *** 多参返回
@@ -13,7 +27,7 @@
 ** 死锁
 * /goroutine/
 * /OOP (object-oriented programming)/
-*注意： /Go/ 是跟 /C/ 一脉相承的函数式编程语言。*
+*注意： ~Go~ 是跟 ~C~ 一脉相承的函数式编程语言。*
 ** 基本操作
 ** 公有私有
 ** 匿名组合之继承
