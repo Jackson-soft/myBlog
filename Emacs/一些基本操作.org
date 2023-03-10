@@ -1,0 +1,16 @@
+#+TITLE: ~Emacs~ 的一些操作记录
+
+* 替换
+  语法操作步骤:
+  + 普通 :: ~M-% string RET newstring RET~ ;
+  + 正则 :: ~C-M-% regexp RET newstring RET~ 。
+
+  被替换的词会高亮起来，这时，输入 ~y~ 替换并跳到下一个，输入 ~n~ 忽略并跳到下一个，输入 ~q~ 结束，输入 ~!~ 替换剩下的全部。
+
+  一些常用的选项：
+  + =C-g= 中断查找替换过程。
+  + =^= 返回上一个替换点，按 =y= 继续下一个，如果不想替换上一个的话，用 =^= 返回到上一个，然后按 =C-r= 进入编辑，修改完后按 =C-M-c= 退出继续下一个。
+  + =C-l= 使当前匹配显示在文档中间。
+  + =C-r= 进入修改。
+
+  其他一些细节可以看一下文档 [[https://www.gnu.org/software/emacs/manual/html_node/emacs/Query-Replace.html][Query Replace]] 。
