@@ -60,6 +60,31 @@ git remote set-url origin https://github.com/USERNAME/REPOSITORY.git
 #+begin_src shell
 git submodule set-url third_party/uranus https://github.com/Jackson-soft/uranus.git
 #+end_src
+
+* 重置当前 ~HEAD~ 到指定的状态
+命令格式：
+
+~git reset [--soft | --mixed [-N] | --hard | --merge | --keep] [-q] [<commit>]~
+
+~git reset [<mode>] [<commit>]~ 说明：
+该命令是把当前的分支的 ~head~ 重置到指定的 ~commit~ ，并根据 ~mode~ 更新索引和工作树。如果省略 ~<mode>~ ，则默认为 ~--mixed~ 。 ~mode~ 则是下面其中之一：
+
++ ~--soft~ :: 完全不碰索引文件或工作树（但将头部重置为`<commit>`，就像所有模式一样）。
++ ~--mixed~ :: 重置索引，但不重置工作树（即保留已修改的文件，但不标记为提交）并报告未更新的内容。
++ ~--hard~ :: 删除工作空间的代码改动，撤销 ~commit~ 且撤销 ~add~ 。
++ ~--merge~ :: 重置索引并更新工作树中在`<commit>和`HEAD`之间不同的文件，但保留那些在索引和工作树之间不同的文件（即那些有未被添加的修改）。 如果一个在<commit>`和索引之间不同的文件有未分阶段的变化，重置将被中止。
++ ~--keep~ :: 重置索引项并更新工作树中`<commit>和`HEAD`之间不同的文件。 如果一个在<commit>`和`HEAD`之间不同的文件有本地修改，重置将被中止。
++ ~--[no-]recurse-submodules~ :: 当工作树被更新时，使用 --recurse-submodules 也将根据超级项目中记录的提交，递归地重置所有活动的子模块的工作树，同时也将子模块的 HEAD 设置为在该提交中被分离。
+
+
+* 修改 ~commit~
+
+#+begin_src shell
+git commit --amend
+#+end_src
+
+这时候会进入vim编辑器，修改完后保存即可。
+
 * 文档
 + [[https://www.bookstack.cn/read/git-doc-zh/README.md][Git 中文参考 - 《Git 中文参考》 - 书栈网 · BookStack]]
 + [[https://docs.github.com/cn/github/using-git][使用 Git - GitHub Docs]]
