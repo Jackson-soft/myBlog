@@ -2,6 +2,41 @@
 * 基本概念
   + 贫血模型：像我们平时普通开发那样，Service 是业务逻辑，处理传递进来的 BO（Business Object）业务对象或则参数对象，对于 BO 来说，BO 是贫血模型，数据和业务逻辑被分割到不同的类中；
   + 充血模型：相反的，数据和对应的业务逻辑被封装到同一个类中。
+* 基本的目录结构体系
+  #+begin_src text
+- application    // 应用层
+| - assembler      // 用于Entity和DTO转换
+| - dto              // 存放DTO对象，DTO作为service的入参
+| - - command        // 命令入参，如：add、update、edit、delete
+| - - event          // 事件入参，如：addEvent、updateEvent
+| - - query          // 查询入参，如：detailQuery、treeQuery
+| - - result         // 返回结果，如：addResult、queryResult
+| - event          // 事件
+| - - listener       // 事件监听器
+| - external
+| - - impl           // 外部依赖实现
+| - service        // 业务服务服务
+| - - impl           // 服务实现
+- domain         // 领域层
+| - converter      // 用于Entity和DO转换
+| - entity         // 领域实体类，代表一个有状态的具体的事物
+| - external       // 外部依赖
+| - repository     // 仓库，用于处理业务语言描述的持久化操作
+| - service        // 领域服务
+| - types          // 领域原语
+- infrastructure // 基础层
+| - config         // 配置
+| - constant       // 常量
+| - enums          // 枚举
+| - mapper         // 数据库操作
+| - persistence    // 持久化对象
+| - util           // 工具类
+- interfaces     // 接口层
+| - web            // 网页API
+| - - rest           // rest接口
+| - - ws             // webservice接口
+| - mobile         // 移动端API
+  #+end_src
 
 * 领域模型
 ** 分层架构
