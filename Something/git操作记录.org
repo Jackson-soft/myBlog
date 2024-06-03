@@ -50,7 +50,8 @@ git remote -v
 #+begin_src shell
 git remote set-url origin https://github.com/USERNAME/REPOSITORY.git
 #+end_src
-* 修改子模块的仓库链接
+* 子模块（ ~submodule~ ）
+** 修改子模块的仓库链接
 命令格式：
 
 ~git submodule set-url [--] <path> <newurl>~
@@ -60,6 +61,32 @@ git remote set-url origin https://github.com/USERNAME/REPOSITORY.git
 #+begin_src shell
 git submodule set-url third_party/uranus https://github.com/Jackson-soft/uranus.git
 #+end_src
+** 删除子模块
+   ~git submodule deinit~ 命令卸载一个子模块。这个命令如果添加上参数 ~--force~ ，则子模块工作区内即使有本地的修改，也会被移除。
+
+删除一个子模块的命令组合：
+
+#+begin_src shell
+git submodule deinit project-sub-1
+git rm project-sub-1
+#+end_src
+
+执行 ~git submodule deinit project-sub-1~ 命令的实际效果，是自动在 ~.git/config~ 中删除了以下内容：
+
+#+begin_src conf
+[submodule "project-sub-1"]
+url = https://github.com/username/project-sub-1.git
+#+end_src
+
+执行 ~git rm project-sub-1~ 的效果，是移除了 ~project-sub-1~ 文件夹，并自动在 ~.gitmodules~ 中删除了以下内容：
+
+#+begin_src conf
+[submodule "project-sub-1"]
+path = project-sub-1
+url = https://github.com/username/project-sub-1.git
+#+end_src
+
+此时，主项目中关于子模块的信息基本已经删除（虽然貌似 ~.git/modules~ 目录下还有残余）
 
 * 重置当前 ~HEAD~ 到指定的状态
 命令格式：
