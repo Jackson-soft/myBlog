@@ -115,15 +115,24 @@ default_options:
 
 ~conanfile.txt~ 文件内容：
 #+begin_src text
- [requires]
- poco/1.9.4
+[requires]
+zlib/1.2.11
 
- [generators]
- cmake
+[generators]
+CMakeDeps
+CMakeToolchain
+
+[layout]
+cmake_layout
 #+end_src
 ~[requires]~ 部分列出你所需要依赖的包的名称及版本。
 
 ~[generators]~ 部分指定所需要的「生成器」，可以生成与 ~CMake~ 、 ~SCons~ 等工具的对接文件。
+
+如果是首次使用 =conan= 的话，需要初始化编译配置：
+#+begin_src shell
+conan profile detect --force
+#+end_src
 
 ~CMakeLists.txt~ 文件中要添加如下内容：
 #+begin_src cmake
@@ -162,7 +171,7 @@ default_options:
 
 这样把 ~conanfile.txt~ 文件放在 ~library~ 目录下，安装依赖的时候也是在这个目录下执行：
 #+begin_src shell
-conan install .
+conan install . --output-folder=build --build=missing -u
 #+end_src
 
 我倾向使用 ~cmake_find_package~ 这个生成器：
@@ -214,4 +223,4 @@ conan install . --build missing
  spdlog:header_only=True #指定库为 header only
 #+end_src
 * 文档
-+ [[https://docs.conan.io/en/latest/introduction.html][Introduction — conan 1.32.1 documentation]]
++ [[https://docs.conan.io/2/index.html][Conan 2 - C and C++ Package Manager]]
