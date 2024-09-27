@@ -7,8 +7,7 @@
    #+begin_src shell
 sudo dnf5 install https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm
    #+end_src
-
-注： ~NVIDIA~ 的驱动是在 ~RPMFusion~ 源里，如果已安装则可跳过。也可以从英伟达官网下载 ~Linux~ 相关驱动，但那种安装方式相对麻烦。
+  注： ~NVIDIA~ 的驱动是在 ~RPMFusion~ 源里，如果已安装则可跳过。也可以从英伟达官网下载 ~Linux~ 相关驱动，但那种安装方式相对麻烦。
 2. 将系统更新到最新
    #+begin_src shell
 sudo dnf5 upgrade --refresh
