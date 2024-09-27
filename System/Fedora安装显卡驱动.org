@@ -1,0 +1,57 @@
+#+TITLE:  ~Fedora~ 安装显卡驱动
+* 说明
+  + 系统是 ~Fedora~ 41 ~KDE~ ;
+  + 安全启动（ ~Secure Boot~ ） 开启（没有开启的情况下，按官方说法是直接安装驱动就行）；
+* 具体步骤
+1. 安装 ~RPMFusion~ 源
+   #+begin_src shell
+sudo dnf5 install https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm
+   #+end_src
+
+注： ~NVIDIA~ 的驱动是在 ~RPMFusion~ 源里，如果已安装则可跳过。也可以从英伟达官网下载 ~Linux~ 相关驱动，但那种安装方式相对麻烦。
+2. 将系统更新到最新
+   #+begin_src shell
+sudo dnf5 upgrade --refresh
+   #+end_src
+3. 安装签名模块
+   #+begin_src shell
+sudo dnf5 install kmodtool akmods mokutil openssl
+   #+end_src
+4. 使用默认值生成密钥
+   #+begin_src shell
+sudo kmodgenca -a
+   #+end_src
+5. 导入密钥并设置密码
+   #+begin_src shell
+sudo mokutil --import /etc/pki/akmods/certs/public_key.der
+   #+end_src
+6. 重启
+   #+begin_src shell
+sudo systemctl reboot
+   #+end_src
+7. ~MOK~ 管理器会询问你是否要继续启动或注册密钥，选择“注册MOK”->“继续”，输入在(5)中创建的密码，如下图：
+   [[file:mok1.png]]
+   [[file:mok2.webp]]
+8. 安装驱动和依赖
+   #+begin_src shell
+sudo dnf5 install gcc kernel-headers kernel-devel akmod-nvidia xorg-x11-drv-nvidia xorg-x11-drv-nvidia-libs
+   #+end_src
+9. 要等内核模块编译完成后，你可以校验一下驱动
+   #+begin_src shell
+modinfo -F version nvidia
+   #+end_src
+10. 强制从更新后的内核模块中读取配置，然后重启系统
+    #+begin_src shell
+sudo akmods --force
+sudo dracut --force
+    #+end_src
+11. （可选）禁用 GSP 固件
+    #+begin_src shell
+# For latest drivers (555-560) + wayland you might want to also disable GSP Firmware to reduce lags in Gnome/KDE
+# source: https://forums.developer.nvidia.com/t/major-kde-plasma-desktop-frameskip-lag-issues-on-driver-555/293606
+sudo grubby --update-kernel=ALL --args=nvidia.NVreg_EnableGpuFirmware=0
+    #+end_src
+* 文档
+  + [[https://docs.fedoraproject.org/en-US/quick-docs/set-nvidia-as-primary-gpu-on-optimus-based-laptops/][How to Set Nvidia as Primary GPU on Optimus-based Laptops]]
+  + [[https://rpmfusion.org/Howto/Secure%20Boot?highlight=%28%5CbCategoryHowto%5Cb%29][Secure Boot]]
+  + [[https://rpmfusion.org/Howto/NVIDIA?highlight=%28%5CbCategoryHowto%5Cb%29][NVIDIA]]
